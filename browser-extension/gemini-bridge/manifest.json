@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Hydra Gemini Bridge",
+  "version": "0.1.0",
+  "description": "Connects a normal Gemini browser tab to Hydra without Playwright.",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*",
+    "http://127.0.0.1:3847/*",
+    "http://localhost:3847/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
