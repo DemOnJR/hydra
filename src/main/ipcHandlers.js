@@ -18,7 +18,6 @@ import {
   appendAgentJournal,
   detectGitRepository,
   getAgentJournalPath,
-  prepareAgentWorkspace,
   readAgentJournal
 } from "./projectWorkspace.js";
 import {
@@ -46,6 +45,7 @@ const CACHEABLE_TOOL_ACTIONS = new Set([
   "list_files",
   "search_files",
   "read_file",
+  "read_file_lines",
   "read_files",
   "batch_actions",
   "rebuild_app",
@@ -55,6 +55,7 @@ const CACHEABLE_TOOL_ACTIONS = new Set([
 const CACHE_INVALIDATING_TOOL_ACTIONS = new Set([
   "apply_patch",
   "write_file",
+  "replace",
   "run_command",
   "rebuild_app",
   "reload_app",
@@ -66,15 +67,6 @@ const agentExecutionQueues = new Map();
 let restartScheduled = false;
 const temporarilyUnavailableAgents = new Map();
 const taskAiMetaByTaskId = new Map();
-const ORCHESTRATOR_WORKER_ONLY_ACTIONS = new Set([
-  "apply_patch",
-  "write_file"
-]);
-const ORCHESTRATOR_POST_DELEGATION_ACTIONS = new Set([
-  "rebuild_app",
-  "reload_app",
-  "restart_app"
-]);
 const TEMPORARY_UNAVAILABLE_PATTERNS = [
   /out of free messages/i,
   /free messages until/i,
@@ -343,12 +335,6 @@ async function wakeUpAgent(agent) {
   }
 }
 
-function getAvailableWorkers(contextPayload, agent) {
-  return (contextPayload?.agents || []).filter(
-    (candidate) => candidate.role === "worker" && candidate.id !== agent?.id
-  );
-}
-
 function compareFallbackAgents(left, right, failedPlatform) {
   const leftRoleScore = left.role === "orchestrator" ? 0 : 1;
   const rightRoleScore = right.role === "orchestrator" ? 0 : 1;
@@ -404,19 +390,6 @@ async function pickFallbackExecutionAgent({
   }
 
   return null;
-}
-
-function formatDelegationRequiredPrompt(request, workers) {
-  const workerList = workers.map((worker) => worker.name).join(", ");
-
-  return [
-    "[HYDRA_TOOL_RESULT]",
-    `The requested action "${request.action}" was blocked by orchestration policy.`,
-    "As the orchestrator, you must delegate implementation work to an available worker before changing files or restarting the app yourself.",
-    `Available workers: ${workerList || "none"}`,
-    "Use read-only discovery if needed, then respond with exactly one ```hydra``` JSON block using delegate_task or delegate_tasks.",
-    "After the worker returns, you may review, validate, rebuild, reload, and summarize."
-  ].join("\n");
 }
 
 function enqueueAgentTask(agentId, runner) {
@@ -583,10 +556,6 @@ async function prepareExecutionContext(agent, contextPayload) {
     };
   }
 
-  if (agent.role === "worker") {
-    return prepareAgentWorkspace(canonicalProjectRoot, agent);
-  }
-
   const gitInfo = await detectGitRepository(canonicalProjectRoot);
 
   return {
@@ -605,9 +574,9 @@ function buildDelegatedTask(task, parentAgent, workerContext) {
     "",
     `Delegated subtask from orchestrator "${parentAgent.name}".`,
     "Complete only this subtask and do not re-scope the project.",
-    workerContext.branchName
-      ? `Use only your assigned branch/workspace: ${workerContext.branchName}.`
-      : "Use only your assigned workspace for edits.",
+    workerContext.workspacePath
+      ? `Work directly in the project root: ${workerContext.workspacePath}.`
+      : "Work directly in the configured project root.",
     "At the end, summarize exact files changed, commands run, and blockers for the orchestrator.",
   ].join("\n");
 }
@@ -661,7 +630,6 @@ async function continueWithToolBridge({
   let repeatedRequestCount = 0;
   let pendingRestart = false;
   let nextPrompt = initialPrompt;
-  let hasDelegatedImplementation = false;
   const cachedResultsBySignature = new Map();
   const accumulatedFileChanges = new Map();
 
@@ -696,8 +664,6 @@ async function continueWithToolBridge({
       task: buildDelegatedTask(request.task || "", agent, targetExecutionContext),
       parentAgent: agent
     });
-
-    hasDelegatedImplementation = true;
 
     emitTaskEvent(projectId, {
       taskId,
@@ -846,29 +812,8 @@ async function continueWithToolBridge({
         );
       }
 
-      const availableWorkers = getAvailableWorkers(contextPayload, agent);
-      const delegationRequired =
-        agent.role === "orchestrator" &&
-        availableWorkers.length > 0 &&
-        (
-          ORCHESTRATOR_WORKER_ONLY_ACTIONS.has(request.action) ||
-          (
-            !hasDelegatedImplementation &&
-            ORCHESTRATOR_POST_DELEGATION_ACTIONS.has(request.action)
-          )
-        );
-
-      if (delegationRequired) {
-        emitTaskEvent(projectId, {
-          taskId,
-          agentId: agent.id,
-          kind: "system",
-          label: "Hydra",
-          message: `Direct ${request.action} blocked. ${availableWorkers[0].name} or another worker must be assigned first.`
-        });
-        currentPrompt = formatDelegationRequiredPrompt(request, availableWorkers);
-        continue;
-      }
+      // Note: All agents operate directly in the canonical project root.
+      // Delegation remains available, but edits are not blocked when workers exist.
 
       const settings = await getAppSettings();
       const approved = await requestToolApproval({

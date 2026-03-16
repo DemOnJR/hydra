@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog } from "electron";
-import { exec, spawnSync } from "node:child_process";
+import { exec, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +14,10 @@ const MAX_SEARCH_MATCHES = 120;
 const MAX_MULTI_READ_FILES = 8;
 const MAX_MULTI_READ_TOTAL_CHARS = 160000;
 const MAX_BATCH_ACTIONS = 6;
+const DEFAULT_READ_LINE_COUNT = 120;
+const MAX_READ_LINE_COUNT = 400;
+const MAX_LINE_SNIPPET_CHARS = 300;
+const MAX_READ_LINE_CHARS = 2000;
 const IGNORED_DIRS = new Set([
   ".git",
   "node_modules",
@@ -43,6 +47,7 @@ const READ_ONLY_BATCH_ACTIONS = new Set([
   "list_files",
   "search_files",
   "read_file",
+  "read_file_lines",
   "read_files"
 ]);
 
@@ -123,7 +128,32 @@ function listFiles(projectRoot, dir = ".", maxDepth = 3) {
     : lines.join("\n") || "(no files)";
 }
 
-function searchFiles(projectRoot, pattern, dir = ".") {
+function trimSnippet(value, maxChars = MAX_LINE_SNIPPET_CHARS) {
+  const text = String(value ?? "").trim();
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
+}
+
+function normalizeSearchLine(line) {
+  const text = String(line ?? "").replace(/\r$/, "");
+  const first = text.indexOf(":");
+
+  if (first < 0) {
+    return trimSnippet(text);
+  }
+
+  const second = text.indexOf(":", first + 1);
+  if (second < 0) {
+    return trimSnippet(text);
+  }
+
+  const file = text.slice(0, first);
+  const lineNo = text.slice(first + 1, second);
+  const snippet = trimSnippet(text.slice(second + 1));
+
+  return `${file}:${lineNo}: ${snippet}`;
+}
+
+function searchFilesSlow(projectRoot, pattern, dir = ".") {
   const root = path.resolve(projectRoot);
   const startDir = resolveProjectPath(root, dir);
   const needle = String(pattern ?? "").trim().toLowerCase();
@@ -176,7 +206,7 @@ function searchFiles(projectRoot, pattern, dir = ".") {
         const line = lines[index];
         if (line.toLowerCase().includes(needle)) {
           matches.push(
-            `${path.relative(root, absolutePath)}:${index + 1}: ${line.trim().slice(0, 300)}`
+            `${path.relative(root, absolutePath)}:${index + 1}: ${trimSnippet(line)}`
           );
         }
 
@@ -192,6 +222,198 @@ function searchFiles(projectRoot, pattern, dir = ".") {
   return matches.length
     ? matches.join("\n")
     : "(no matches)";
+}
+
+let cachedRipgrepAvailable = null;
+
+function isRipgrepAvailable() {
+  if (cachedRipgrepAvailable != null) {
+    return cachedRipgrepAvailable;
+  }
+
+  try {
+    const result = spawnSync("rg", ["--version"], {
+      encoding: "utf8",
+      windowsHide: true
+    });
+    cachedRipgrepAvailable = result.status === 0;
+  } catch {
+    cachedRipgrepAvailable = false;
+  }
+
+  return cachedRipgrepAvailable;
+}
+
+function runLineLimitedProcess(command, args, options = {}) {
+  const cwd = options.cwd;
+  const maxLines = Number.isInteger(options.maxLines) ? options.maxLines : MAX_SEARCH_MATCHES;
+  const timeoutMs = Number.isInteger(options.timeoutMs) ? options.timeoutMs : 20000;
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    let stdoutBuffer = "";
+    let stderrBuffer = "";
+    const lines = [];
+    let timedOut = false;
+    let truncated = false;
+
+    function finish(result) {
+      if (resolved) {
+        return;
+      }
+
+      resolved = true;
+      resolve(result);
+    }
+
+    let child;
+
+    try {
+      child = spawn(command, args, {
+        cwd,
+        windowsHide: true
+      });
+    } catch (error) {
+      finish({ ok: false, exitCode: 1, lines: [], stderr: String(error?.message ?? error), truncated: false, timedOut: false });
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill();
+      } catch {
+        // ignore
+      }
+    }, timeoutMs);
+
+    function drainStdout() {
+      while (lines.length < maxLines) {
+        const idx = stdoutBuffer.indexOf("\n");
+        if (idx < 0) {
+          break;
+        }
+        const line = stdoutBuffer.slice(0, idx);
+        stdoutBuffer = stdoutBuffer.slice(idx + 1);
+        lines.push(line.replace(/\r$/, ""));
+        if (lines.length >= maxLines) {
+          truncated = true;
+          try {
+            child.kill();
+          } catch {
+            // ignore
+          }
+          break;
+        }
+      }
+    }
+
+    if (child.stdout) {
+      child.stdout.on("data", (chunk) => {
+        stdoutBuffer += chunk.toString("utf8");
+        drainStdout();
+      });
+    }
+
+    if (child.stderr) {
+      child.stderr.on("data", (chunk) => {
+        stderrBuffer += chunk.toString("utf8");
+      });
+    }
+
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      finish({
+        ok: false,
+        exitCode: 1,
+        lines,
+        stderr: String(error?.message ?? error),
+        truncated,
+        timedOut
+      });
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      drainStdout();
+      if (!truncated && stdoutBuffer.trim() && lines.length < maxLines) {
+        lines.push(stdoutBuffer.replace(/\r$/, "").trimEnd());
+      }
+
+      finish({
+        ok: code === 0,
+        exitCode: Number.isInteger(code) ? code : 1,
+        lines,
+        stderr: stderrBuffer.trim(),
+        truncated,
+        timedOut
+      });
+    });
+  });
+}
+
+async function searchFiles(projectRoot, pattern, dir = ".") {
+  const root = path.resolve(projectRoot);
+  const startDir = resolveProjectPath(root, dir);
+  const needle = String(pattern ?? "").trim();
+
+  if (!needle) {
+    throw new Error("Search pattern is required.");
+  }
+
+  if (!fs.existsSync(startDir) || !fs.statSync(startDir).isDirectory()) {
+    throw new Error(`Directory not found: ${dir}`);
+  }
+
+  const relDir = path.relative(root, startDir) || ".";
+
+  if (isRipgrepAvailable()) {
+    const globArgs = [];
+    for (const ignored of IGNORED_DIRS) {
+      globArgs.push("--glob", `!${ignored}/**`);
+    }
+
+    const rgResult = await runLineLimitedProcess(
+      "rg",
+      [
+        "-n",
+        "--no-heading",
+        "--color=never",
+        "--fixed-string",
+        "--ignore-case",
+        "--max-count",
+        "3",
+        ...globArgs,
+        needle,
+        relDir
+      ],
+      { cwd: root, maxLines: MAX_SEARCH_MATCHES, timeoutMs: 20000 }
+    );
+
+    if (rgResult.exitCode === 0 || rgResult.exitCode === 1 || rgResult.truncated) {
+      const outputLines = rgResult.lines.map(normalizeSearchLine).filter(Boolean);
+      const output = outputLines.length
+        ? outputLines.join("\n")
+        : "(no matches)";
+      return rgResult.truncated ? `${output}\n... truncated ...` : output;
+    }
+  }
+
+  const gitResult = await runLineLimitedProcess(
+    "git",
+    ["grep", "-n", "-I", "-F", "-i", needle, "--", relDir],
+    { cwd: root, maxLines: MAX_SEARCH_MATCHES, timeoutMs: 20000 }
+  );
+
+  if (gitResult.exitCode === 0 || gitResult.exitCode === 1 || gitResult.truncated) {
+    const outputLines = gitResult.lines.map(normalizeSearchLine).filter(Boolean);
+    const output = outputLines.length
+      ? outputLines.join("\n")
+      : "(no matches)";
+    return gitResult.truncated ? `${output}\n... truncated ...` : output;
+  }
+
+  return searchFilesSlow(projectRoot, pattern, dir);
 }
 
 function readFileWithLimit(projectRoot, filePath, maxChars = MAX_FILE_READ_CHARS) {
@@ -258,6 +480,124 @@ function readFiles(projectRoot, paths = []) {
   }
 
   return files;
+}
+
+function parseLineNumber(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+async function readFileLines(projectRoot, filePath, options = {}) {
+  const absolutePath = resolveProjectPath(projectRoot, filePath);
+
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  if (!fs.statSync(absolutePath).isFile()) {
+    throw new Error(`Path is not a file: ${filePath}`);
+  }
+
+  const requestedStart = parseLineNumber(options.startLine);
+  const requestedEnd = parseLineNumber(options.endLine);
+  const startLine = Math.max(1, requestedStart ?? 1);
+  let endLine = requestedEnd ?? (startLine + DEFAULT_READ_LINE_COUNT - 1);
+
+  if (!Number.isInteger(endLine) || endLine < startLine) {
+    endLine = startLine;
+  }
+
+  const maxEndLine = startLine + MAX_READ_LINE_COUNT - 1;
+  const clamped = endLine > maxEndLine;
+  if (clamped) {
+    endLine = maxEndLine;
+  }
+
+  const stream = fs.createReadStream(absolutePath, {
+    encoding: "utf8"
+  });
+
+  let buffer = "";
+  let currentLine = 0;
+  let totalChars = 0;
+  let truncated = false;
+  const outputLines = [];
+
+  try {
+    for await (const chunk of stream) {
+      buffer += chunk;
+
+      while (true) {
+        const idx = buffer.indexOf("\n");
+        if (idx < 0) {
+          break;
+        }
+
+        const rawLine = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        currentLine += 1;
+
+        if (currentLine < startLine) {
+          continue;
+        }
+
+        if (currentLine > endLine) {
+          stream.destroy();
+          break;
+        }
+
+        const cleanLine = rawLine.replace(/\r$/, "");
+        const snippet = cleanLine.length > MAX_READ_LINE_CHARS
+          ? `${cleanLine.slice(0, MAX_READ_LINE_CHARS)}...`
+          : cleanLine;
+        const numbered = `${currentLine}: ${snippet}`;
+        outputLines.push(numbered);
+        totalChars += numbered.length + 1;
+
+        if (totalChars >= MAX_FILE_READ_CHARS) {
+          truncated = true;
+          stream.destroy();
+          break;
+        }
+      }
+
+      if (currentLine >= endLine || truncated) {
+        break;
+      }
+    }
+
+    // Flush last line when file does not end with a newline.
+    if (!truncated && currentLine < endLine && buffer) {
+      currentLine += 1;
+      if (currentLine >= startLine && currentLine <= endLine) {
+        const cleanLine = buffer.replace(/\r$/, "");
+        const snippet = cleanLine.length > MAX_READ_LINE_CHARS
+          ? `${cleanLine.slice(0, MAX_READ_LINE_CHARS)}...`
+          : cleanLine;
+        const numbered = `${currentLine}: ${snippet}`;
+        outputLines.push(numbered);
+        totalChars += numbered.length + 1;
+        if (totalChars >= MAX_FILE_READ_CHARS) {
+          truncated = true;
+        }
+      }
+    }
+  } finally {
+    stream.destroy();
+  }
+
+  return {
+    path: filePath,
+    startLine,
+    endLine,
+    clamped,
+    truncated,
+    content: outputLines.join("\n")
+  };
 }
 
 function readFileSnapshot(projectRoot, filePath) {
@@ -416,6 +756,46 @@ function writeFile(projectRoot, filePath, content) {
   };
 }
 
+function replaceText(projectRoot, filePath, oldString, newString) {
+  const from = String(oldString ?? "");
+  const to = String(newString ?? "");
+
+  if (!from) {
+    throw new Error("oldString is required.");
+  }
+
+  if (from.length > 50000) {
+    throw new Error(`oldString is too large (${from.length} chars).`);
+  }
+
+  if (to.length > 50000) {
+    throw new Error(`newString is too large (${to.length} chars).`);
+  }
+
+  const beforeSnapshot = readFileSnapshot(projectRoot, filePath);
+  if (!beforeSnapshot.exists) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  if (!beforeSnapshot.content.includes(from)) {
+    throw new Error(`oldString not found in file: ${filePath}`);
+  }
+
+  const nextContent = beforeSnapshot.content.replace(from, to);
+  const absolutePath = resolveProjectPath(projectRoot, filePath);
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  fs.writeFileSync(absolutePath, nextContent, "utf8");
+
+  const afterSnapshot = readFileSnapshot(projectRoot, filePath);
+  const fileChange = computeFileChangeStats(filePath, beforeSnapshot, afterSnapshot);
+
+  return {
+    path: filePath,
+    replaced: true,
+    filesChanged: fileChange ? [fileChange] : []
+  };
+}
+
 function applyPatch(projectRoot, patchText) {
   const normalizedPatch = String(patchText ?? "").replace(/\r\n?/g, "\n");
 
@@ -545,6 +925,10 @@ function normalizeSingleRequestObject(raw) {
     agentId: raw.agentId ? String(raw.agentId).trim() : undefined,
     pattern: raw.pattern ? String(raw.pattern).trim() : undefined,
     path: raw.path ? String(raw.path).trim() : undefined,
+    startLine: parseLineNumber(raw.startLine) ?? undefined,
+    endLine: parseLineNumber(raw.endLine) ?? undefined,
+    oldString: raw.oldString !== undefined ? String(raw.oldString) : undefined,
+    newString: raw.newString !== undefined ? String(raw.newString) : undefined,
     paths: Array.isArray(raw.paths)
       ? [...new Set(raw.paths.map((item) => String(item ?? "").trim()).filter(Boolean))]
       : undefined,
@@ -719,8 +1103,12 @@ function summarizeRequest(request) {
       return `Read ${request.paths?.length || 0} files`;
     case "read_file":
       return `Read file ${request.path}`;
+    case "read_file_lines":
+      return `Read lines ${request.startLine || "?"}-${request.endLine || "?"} from ${request.path}`;
     case "write_file":
       return `Write file ${request.path}`;
+    case "replace":
+      return `Replace text in ${request.path}`;
     case "apply_patch":
       return "Apply a unified diff patch";
     case "batch_actions":
@@ -758,6 +1146,15 @@ export async function requestToolApproval({
     `Action: ${request.action}`,
     request.reason ? `Reason: ${request.reason}` : null,
     request.path ? `Path: ${request.path}` : null,
+    request.startLine || request.endLine
+      ? `Lines: ${request.startLine || "?"}-${request.endLine || "?"}`
+      : null,
+    request.oldString !== undefined
+      ? `Old string (${String(request.oldString).length} chars): ${trimSnippet(request.oldString, 200)}`
+      : null,
+    request.newString !== undefined
+      ? `New string (${String(request.newString).length} chars): ${trimSnippet(request.newString, 200)}`
+      : null,
     request.patch ? `Patch size: ${request.patch.length} chars` : null,
     request.dir ? `Dir: ${request.dir}` : null,
     request.pattern ? `Pattern: ${request.pattern}` : null,
@@ -808,7 +1205,7 @@ async function executeReadOnlyToolRequest(projectRoot, request) {
         action: request.action,
         dir: request.dir || ".",
         pattern: request.pattern || "",
-        output: searchFiles(projectRoot, request.pattern, request.dir || ".")
+        output: await searchFiles(projectRoot, request.pattern, request.dir || ".")
       };
 
     case "read_file":
@@ -818,6 +1215,19 @@ async function executeReadOnlyToolRequest(projectRoot, request) {
         path: request.path,
         content: readFile(projectRoot, request.path)
       };
+
+    case "read_file_lines": {
+      const result = await readFileLines(projectRoot, request.path, {
+        startLine: request.startLine,
+        endLine: request.endLine
+      });
+
+      return {
+        ok: true,
+        action: request.action,
+        ...result
+      };
+    }
 
     case "read_files":
       return {
@@ -836,6 +1246,7 @@ export async function executeToolRequest(projectRoot, request, options = {}) {
     case "list_files":
     case "search_files":
     case "read_file":
+    case "read_file_lines":
     case "read_files":
       return executeReadOnlyToolRequest(projectRoot, request);
 
@@ -844,6 +1255,13 @@ export async function executeToolRequest(projectRoot, request, options = {}) {
         ok: true,
         action: request.action,
         ...writeFile(projectRoot, request.path, request.content)
+      };
+
+    case "replace":
+      return {
+        ok: true,
+        action: request.action,
+        ...replaceText(projectRoot, request.path, request.oldString, request.newString)
       };
 
     case "apply_patch":
@@ -975,6 +1393,21 @@ function formatBatchActionsResult(result) {
       return;
     }
 
+    if (entry.action === "read_file_lines") {
+      sections.push(`Path: ${entry.path}`);
+      sections.push(`Lines: ${entry.startLine || "?"}-${entry.endLine || "?"}`);
+      if (entry.clamped) {
+        sections.push("(Requested range clamped to limit.)");
+      }
+      if (entry.truncated) {
+        sections.push("(Output truncated to size limit.)");
+      }
+      sections.push("```text");
+      sections.push(String(entry.content ?? ""));
+      sections.push("```");
+      return;
+    }
+
     if (entry.action === "read_files") {
       entry.files.forEach((file) => {
         sections.push(`[FILE ${file.path}]`);
@@ -1015,10 +1448,12 @@ export function formatToolResultPrompt(request, result) {
     ? "The action succeeded. Do not repeat the same request unless the result explicitly shows it failed."
     : "The action failed. You may request a different safer action or explain the blocker.";
   const nextStepLine =
-    request.action === "write_file" || request.action === "apply_patch"
+    request.action === "write_file" || request.action === "apply_patch" || request.action === "replace"
       ? "If the file write succeeded, summarize the change or continue with the next distinct step instead of rewriting the same file again."
       : request.action === "read_file"
       ? "You already have the file content below. Do not request the same file again unless this result explicitly failed."
+      : request.action === "read_file_lines"
+      ? "You already have the requested file lines below. Do not request the same range again unless this result explicitly failed."
       : request.action === "read_files"
       ? "You already have the grouped file contents below. Continue from them instead of reading the same files one by one."
       : request.action === "list_files"
@@ -1041,6 +1476,33 @@ export function formatToolResultPrompt(request, result) {
       nextStepLine,
       `Path: ${result.path || request.path || "(unknown)"}`,
       "The file content is below as raw text:",
+      "```text",
+      String(result.content ?? ""),
+      "```",
+      "If you need another PC action, respond with exactly one ```hydra``` JSON block.",
+      "If you are done, answer normally for the user."
+    ].join("\n");
+  }
+
+  if (request.action === "read_file_lines" && result?.ok) {
+    const rangeLine = `Lines: ${result.startLine || request.startLine || "?"}-${result.endLine || request.endLine || "?"}`;
+    const notes = [];
+    if (result.clamped) {
+      notes.push("(Requested range clamped to limit.)");
+    }
+    if (result.truncated) {
+      notes.push("(Output truncated to size limit.)");
+    }
+
+    return [
+      "[HYDRA_TOOL_RESULT]",
+      `The requested action "${request.action}" has completed.`,
+      successLine,
+      nextStepLine,
+      `Path: ${result.path || request.path || "(unknown)"}`,
+      rangeLine,
+      ...notes,
+      "The requested file lines are below as raw text:",
       "```text",
       String(result.content ?? ""),
       "```",

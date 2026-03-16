@@ -328,7 +328,7 @@ export function TaskBroadcast({
   }, [serverUrl]);
 
   React.useEffect(() => {
-    setLocalMessages(current => current.filter(lm => !tasks.some(t => t.user_task === lm.text)));
+    setLocalMessages(current => current.filter(lm => !tasks.some(t => trimText(t.user_task) === trimText(lm.text))));
   }, [tasks]);
 
   const conversationItems = buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMessages });
@@ -438,7 +438,7 @@ export function TaskBroadcast({
             className={`flex items-center gap-2.5 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border transition-all ${approvalMode === "auto" ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-indigo-500/10" : "bg-zinc-800/50 text-zinc-600 border-zinc-800 hover:text-zinc-400"}`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${approvalMode === "auto" ? "bg-indigo-400 animate-pulse" : "bg-zinc-700"}`} />
-            Auto-Link {approvalMode === "auto" ? "Active" : "Disabled"}
+            Auto Pilot {approvalMode === "auto" ? "Active" : "Disabled"}
           </button>
           <div className="flex items-center gap-3">
              <span className="w-1 h-1 rounded-full bg-zinc-800" />

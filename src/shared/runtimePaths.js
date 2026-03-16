@@ -126,12 +126,6 @@ export function getSessionsDir() {
   return ensureDirectory(sessionsDir);
 }
 
-export function getWorktreesRoot() {
-  const worktreesRoot = path.join(getHydraHome(), "worktrees");
-  migratePathGroup([{ from: path.join(getLegacyHydraHome(), "worktrees"), to: worktreesRoot }]);
-  return ensureDirectory(worktreesRoot);
-}
-
 export function getLogsDir() {
   return ensureDirectory(path.join(getHydraHome(), "logs"));
 }

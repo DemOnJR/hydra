@@ -42,7 +42,7 @@ Hydra keeps per-user runtime data outside the repo by default:
 - macOS: `~/Library/Application Support/Hydra`
 - Linux: `${XDG_DATA_HOME:-~/.local/share}/hydra`
 
-Inside that directory you will find the SQLite database, browser sessions/profiles, git worktrees, per-project agent journals, and imported local debug logs.
+Inside that directory you will find the SQLite database, browser sessions/profiles, per-project agent journals, and imported local debug logs.
 
 Notes:
 - `HYDRA_HOME` overrides the whole runtime directory.

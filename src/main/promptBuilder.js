@@ -166,6 +166,7 @@ function buildToolBridgeSection(project = {}, agent = null, options = {}) {
     "[HYDRA BRIDGE]",
     "You do have access to the user's PC through Hydra.",
     `Active tool root folder: ${projectRoot}`,
+    "All tool actions operate inside this root folder (shared across agents).",
     `Approval mode: ${approvalMode}`,
     "When you need local access, do not say you lack access.",
     "Instead, respond with exactly one fenced code block in this format:",
@@ -184,8 +185,10 @@ function buildToolBridgeSection(project = {}, agent = null, options = {}) {
     '- {"action":"list_files","dir":".","reason":"..."}',
     '- {"action":"search_files","dir":"src","pattern":"TaskBroadcast","reason":"Locate the most relevant file by text or symbol before reading it."}',
     '- {"action":"read_file","path":"package.json","reason":"..."}',
+    '- {"action":"read_file_lines","path":"src/main/toolBridge.js","startLine":800,"endLine":940,"reason":"Read only the relevant lines instead of the whole file."}',
     '- {"action":"read_files","paths":["package.json","README.md"],"reason":"Read multiple relevant files together before editing."}',
     '- {"action":"batch_actions","actions":[{"action":"search_files","dir":"src/renderer","pattern":"TaskBroadcast"},{"action":"read_files","paths":["src/renderer/components/TaskBroadcast.jsx","src/renderer/styles.css"]}],"reason":"Bundle read-only discovery to reduce round trips."}',
+    '- {"action":"replace","path":"src/renderer/components/TaskBroadcast.jsx","oldString":"Auto-Link","newString":"Auto Pilot","reason":"Apply a small, safe string replacement."}',
     '- {"action":"apply_patch","patch":"diff --git a/package.json b/package.json\\n--- a/package.json\\n+++ b/package.json\\n@@ ...","reason":"Apply a targeted unified diff instead of rewriting the whole file."}',
     '- {"action":"write_file","path":"NEW_FILE.md","content":"full file content","reason":"..."}',
     '- {"action":"run_command","cmd":"npm test","reason":"..."}',
@@ -207,22 +210,13 @@ function buildToolBridgeSection(project = {}, agent = null, options = {}) {
     "Use write_file mainly for creating brand-new files or replacing most of a file on purpose.",
     "Prefer rebuild_app plus reload_app during normal iteration. Use restart_app only as the last step because Hydra does not resume the same task after a full relaunch.",
     agent?.role === "orchestrator"
-      ? `Available workers for delegation: ${workerList}`
-      : "If you are a worker, stay within your isolated workspace and summarize your changes for the orchestrator.",
-    agent?.role === "orchestrator"
+      ? `Available workers for delegation (optional): ${workerList}`
+      : "If you are a worker, you may read and edit files directly under the active tool root folder. Summarize exact files changed and commands run.",
+    agent?.role === "orchestrator" && workers.length > 0
+      ? "Delegation is optional. Use delegate_task(s) to parallelize independent work when it helps."
+      : null,
+    agent?.role === "orchestrator" && workers.length > 0
       ? "When delegating, prefer the worker whose specialty best matches the task, for example design/UI work to a worker labeled design."
-      : null,
-    agent?.role === "orchestrator" && workers.length > 0
-      ? "You are the coordinator, not the primary implementer. For any request that changes code, UI, styles, files, app behavior, tests, or docs, do minimal read-only discovery first and then delegate the implementation to one or more workers."
-      : null,
-    agent?.role === "orchestrator" && workers.length > 0
-      ? "Do not use write_file yourself for product changes while workers are available. Your job is to plan, delegate, review worker output, optionally validate, and summarize."
-      : null,
-    agent?.role === "orchestrator" && workers.length > 0
-      ? "Only skip delegation for pure conversation, routing, or read-only analysis where no file changes are needed."
-      : null,
-    agent?.role === "orchestrator" && workers.length > 0
-      ? "Preferred flow: 1) inspect with search_files/read_files, 2) delegate_task or delegate_tasks, 3) review results, 4) run validation if useful, 5) answer the user."
       : null,
     "If you need clarification from the user, ask in plain text and then stop.",
     "Do not rely on provider-native widgets, questionnaires, clickable cards, or forms because Hydra cannot continue from those interactions.",
