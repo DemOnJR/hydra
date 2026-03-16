@@ -24,6 +24,137 @@ function trimText(value) {
   return String(value ?? "").trim();
 }
 
+function parseChangeSummary(text) {
+  const marker = "[Hydra Change Summary]";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+  const summaryText = text.slice(idx + marker.length).trim();
+  const mainText = text.slice(0, idx).trim();
+  const lines = summaryText.split("\n");
+  const headerLine = lines[0] || "";
+  const filesMatch = headerLine.match(/Files changed:\s*(\d+)/);
+  const addedMatch = headerLine.match(/\+(\d+)/);
+  const deletedMatch = headerLine.match(/-(\d+)/);
+  const totalFiles = filesMatch ? parseInt(filesMatch[1], 10) : 0;
+  const totalAdded = addedMatch ? parseInt(addedMatch[1], 10) : 0;
+  const totalDeleted = deletedMatch ? parseInt(deletedMatch[1], 10) : 0;
+  const files = [];
+  let i = 1;
+  while (i < lines.length) {
+    const line = lines[i];
+    const fileMatch = line.match(/^-\s+(.+?)\s+\((\w+),\s*\+(\d+)\s*\/\s*-(\d+)\)/);
+    if (fileMatch) {
+      const file = {
+        path: fileMatch[1],
+        status: fileMatch[2],
+        addedLines: parseInt(fileMatch[3], 10),
+        deletedLines: parseInt(fileMatch[4], 10),
+        diff: ""
+      };
+      i++;
+      if (lines[i] && lines[i].trim() === "```diff") {
+        i++;
+        const diffLines = [];
+        while (i < lines.length && lines[i].trim() !== "```") {
+          diffLines.push(lines[i]);
+          i++;
+        }
+        file.diff = diffLines.join("\n");
+        i++;
+      }
+      files.push(file);
+    } else {
+      i++;
+    }
+  }
+  return { mainText, totalFiles, totalAdded, totalDeleted, files };
+}
+
+function FileDiffViewer({ file, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-zinc-950 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+            <span className="text-[11px] font-black uppercase tracking-widest text-zinc-300">{file.path}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] text-emerald-400 font-bold">+{file.addedLines}</span>
+            <span className="text-[10px] text-red-400 font-bold">-{file.deletedLines}</span>
+            <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors text-lg leading-none">×</button>
+          </div>
+        </div>
+        <div className="overflow-auto p-5 custom-scrollbar">
+          {file.diff ? (
+            <pre className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
+              {file.diff.split("\n").map((line, idx) => {
+                const isAdded = line.startsWith("+") && !line.startsWith("+++");
+                const isRemoved = line.startsWith("-") && !line.startsWith("---");
+                const isHeader = line.startsWith("@@");
+                return (
+                  <div key={idx} className={`px-2 rounded ${
+                    isAdded ? "bg-emerald-500/10 text-emerald-400" :
+                    isRemoved ? "bg-red-500/10 text-red-400" :
+                    isHeader ? "text-indigo-400 opacity-60" :
+                    "text-zinc-400"
+                  }`}>{line || " "}</div>
+                );
+              })}
+            </pre>
+          ) : (
+            <p className="text-zinc-600 text-xs text-center py-8">No diff recorded for this file.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChangeSummaryBlock({ summary }) {
+  const [open, setOpen] = React.useState(false);
+  const [selectedFile, setSelectedFile] = React.useState(null);
+  return (
+    <>
+      {selectedFile && <FileDiffViewer file={selectedFile} onClose={() => setSelectedFile(null)} />}
+      <div className="mt-3 rounded-2xl border border-white/5 bg-zinc-950/60 overflow-hidden">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors text-left"
+        >
+          <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">📁 Modified Files {summary.totalFiles}</span>
+          <span className="ml-auto flex items-center gap-2">
+            <span className="text-[9px] text-emerald-400 font-bold">+{summary.totalAdded}</span>
+            <span className="text-[9px] text-red-400 font-bold">-{summary.totalDeleted}</span>
+            <span className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">{open ? "▲" : "▼"}</span>
+          </span>
+        </button>
+        {open && (
+          <div className="border-t border-white/5 divide-y divide-white/5">
+            {summary.files.map(file => (
+              <button
+                key={file.path}
+                onClick={() => setSelectedFile(file)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors text-left group"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  file.status === "added" ? "bg-emerald-500" :
+                  file.status === "deleted" ? "bg-red-500" :
+                  "bg-amber-400"
+                }`} />
+                <span className="text-[11px] font-mono text-zinc-300 flex-1 truncate group-hover:text-white transition-colors">{file.path}</span>
+                <span className="text-[9px] text-emerald-400 font-bold shrink-0">+{file.addedLines}</span>
+                <span className="text-[9px] text-red-400 font-bold shrink-0 ml-1">-{file.deletedLines}</span>
+                <span className="text-[9px] text-zinc-600 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">VIEW DIFF →</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function TriangleLoader() {
   return (
     <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
@@ -181,7 +312,7 @@ function ConversationItem({ item, onRetry }) {
         <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-[24px] rounded-tl-none text-[14px] leading-relaxed font-medium text-zinc-300 whitespace-pre-wrap relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
           <div className="relative">
-            {item.text}
+            {!isUser && parseChangeSummary(item.text) ? parseChangeSummary(item.text).mainText : item.text}
             <span className="inline-block w-1.5 h-3.5 bg-indigo-500 ml-1.5 animate-pulse rounded-full align-middle" />
           </div>
         </div>
@@ -211,7 +342,7 @@ function ConversationItem({ item, onRetry }) {
         {showDetail && (
           <div className="ml-4 pl-4 border-l-2 border-indigo-500/20 py-2 animate-in fade-in slide-in-from-left-2 duration-300">
             <div className="text-xs text-zinc-400 font-medium leading-relaxed bg-zinc-900/50 p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
-              {item.text}
+              {!isUser && parseChangeSummary(item.text) ? parseChangeSummary(item.text).mainText : item.text}
               <span className="inline-block w-1.5 h-3 bg-indigo-500 ml-1 animate-pulse" />
             </div>
           </div>
@@ -288,8 +419,11 @@ function ConversationItem({ item, onRetry }) {
         <span className={`text-[9px] font-bold tabular-nums ${isUser ? "text-indigo-200" : "text-zinc-600"}`}>{formatClock(item.timestamp)}</span>
       </header>
       <div className="text-[15px] leading-relaxed whitespace-pre-wrap break-words font-medium tracking-tight">
-        {item.text}
+        {!isUser && parseChangeSummary(item.text) ? parseChangeSummary(item.text).mainText : item.text}
       </div>
+      {!isUser && parseChangeSummary(item.text) && parseChangeSummary(item.text).files.length > 0 && (
+        <ChangeSummaryBlock summary={parseChangeSummary(item.text)} />
+      )}
     </article>
   );
 }
