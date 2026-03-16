@@ -158,7 +158,7 @@ export function BrowserSessions({
                     className="relative flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
                     onClick={() => onInspectAgent(agent)}
                   >
-                    <div className={`p-2 rounded-2xl border transition-all duration-300 ${
+                    <div className={`p-2 rounded-[5px] border transition-all duration-300 ${
                       agent.role === "orchestrator" 
                         ? "bg-indigo-500/10 border-indigo-500/30 group-hover:bg-indigo-500/20 shadow-lg shadow-indigo-500/5" 
                         : "bg-emerald-500/5 border-emerald-500/20 group-hover:bg-emerald-500/10 shadow-lg shadow-emerald-500/5"

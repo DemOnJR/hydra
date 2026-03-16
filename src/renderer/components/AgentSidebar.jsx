@@ -114,7 +114,7 @@ export function AgentSidebar({
     : "flex flex-col gap-2";
 
   return (
-    <section className={`bg-zinc-900/50 border border-white/5 rounded-2xl p-5 h-full flex flex-col ${fullPage ? "shadow-2xl" : ""}`}>
+    <section className={`bg-zinc-900/50 border border-white/5 rounded-[5px] p-5 h-full flex flex-col ${fullPage ? "shadow-2xl" : ""}`}>
       <div className="flex items-center justify-between gap-3 mb-6 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">🤖</div>
@@ -137,14 +137,14 @@ export function AgentSidebar({
 
       <div className={`${listContainerClass} overflow-y-auto custom-scrollbar flex-1 pr-1`}>
         {agents.length === 0 ? (
-          <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white/[0.02] border border-dashed border-white/5 rounded-2xl">
+          <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white/[0.02] border border-dashed border-white/5 rounded-[5px]">
             <span className="text-4xl mb-4 opacity-20">🤖</span>
             <p className="text-zinc-500 text-sm font-medium">No agents active in the current fleet.</p>
             <p className="text-zinc-600 text-xs mt-1">Add an agent to start delegating work.</p>
           </div>
         ) : (
           agents.map((agent) => (
-            <div key={agent.id} className="flex flex-col gap-4 p-5 rounded-2xl bg-zinc-950 border border-white/5 hover:border-indigo-500/30 transition-all group shadow-sm">
+            <div key={agent.id} className="flex flex-col gap-4 p-5 rounded-[5px] bg-zinc-950 border border-white/5 hover:border-indigo-500/30 transition-all group shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div className="grid gap-2 min-w-0 flex-1">
                   <div className="font-black text-sm text-zinc-100 tracking-tight">
@@ -300,7 +300,7 @@ export function AgentSidebar({
               {journalLoading ? (
                 <p className="text-zinc-500 text-xs italic">Loading journal...</p>
               ) : (
-                <pre className="text-[11px] text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2 bg-zinc-950/40 border border-white/5 rounded-2xl p-4">
+                <pre className="text-[11px] text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2 bg-zinc-950/40 border border-white/5 rounded-[5px] p-4">
                   {journalContent?.trim() || "(empty journal)"}
                 </pre>
               )}
@@ -335,7 +335,7 @@ export function AgentSidebar({
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Instance Label *</label>
                 <input
-                  className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                  className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   onKeyDown={(event) => event.key === "Enter" && handleCreate()}
@@ -348,7 +348,7 @@ export function AgentSidebar({
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Platform</label>
                   <select 
-                    className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none appearance-none cursor-pointer shadow-inner"
+                    className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none appearance-none cursor-pointer shadow-inner"
                     value={platform} 
                     onChange={(event) => setPlatform(event.target.value)}
                   >
@@ -363,7 +363,7 @@ export function AgentSidebar({
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Fleet Role</label>
                   <select 
-                    className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none appearance-none cursor-pointer shadow-inner"
+                    className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none appearance-none cursor-pointer shadow-inner"
                     value={role} 
                     onChange={(event) => setRole(event.target.value)}
                   >
@@ -381,7 +381,7 @@ export function AgentSidebar({
                 {(platform === "local" || platform === "ollama") ? (
                   <div className="grid gap-2">
                     <select
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none appearance-none cursor-pointer shadow-inner"
+                      className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none appearance-none cursor-pointer shadow-inner"
                       value={specialty}
                       onChange={(event) => setSpecialty(event.target.value)}
                     >
@@ -393,7 +393,7 @@ export function AgentSidebar({
                     </select>
                     {(!catalog[platform]?.includes(specialty) && specialty !== "") && (
                       <input
-                        className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                        className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
                         value={specialty === "custom" ? "" : specialty}
                         onChange={(event) => setSpecialty(event.target.value)}
                         placeholder="Enter custom model name..."
@@ -402,7 +402,7 @@ export function AgentSidebar({
                   </div>
                 ) : (
                   <input
-                    className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                    className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
                     value={specialty}
                     onChange={(event) => setSpecialty(event.target.value)}
                     placeholder="e.g. backend, security"
@@ -414,7 +414,7 @@ export function AgentSidebar({
             <div className="flex flex-col gap-3 mt-4">
               <button 
                 type="button" 
-                className="w-full bg-indigo-600 text-white p-4 text-xs font-black uppercase tracking-[0.2em] rounded-2xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-indigo-600/20 active:scale-95"
+                className="w-full bg-indigo-600 text-white p-4 text-xs font-black uppercase tracking-[0.2em] rounded-[5px] hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-indigo-600/20 active:scale-95"
                 onClick={handleCreate} 
                 disabled={!name.trim()}
               >
@@ -422,7 +422,7 @@ export function AgentSidebar({
               </button>
               <button
                 type="button"
-                className="w-full bg-zinc-800/50 border border-white/5 text-zinc-500 p-4 text-xs font-black uppercase tracking-[0.2em] rounded-2xl hover:bg-zinc-800 hover:text-zinc-300 transition-all"
+                className="w-full bg-zinc-800/50 border border-white/5 text-zinc-500 p-4 text-xs font-black uppercase tracking-[0.2em] rounded-[5px] hover:bg-zinc-800 hover:text-zinc-300 transition-all"
                 onClick={() => setShowModal(false)}
               >
                 Abort

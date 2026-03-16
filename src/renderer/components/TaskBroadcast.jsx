@@ -73,7 +73,7 @@ function parseChangeSummary(text) {
 function FileDiffViewer({ file, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-zinc-950 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+      <div className="bg-zinc-950 border border-white/10 rounded-[5px] w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
@@ -117,7 +117,7 @@ function ChangeSummaryBlock({ summary }) {
   return (
     <>
       {selectedFile && <FileDiffViewer file={selectedFile} onClose={() => setSelectedFile(null)} />}
-      <div className="mt-3 rounded-2xl border border-white/5 bg-zinc-950/60 overflow-hidden">
+      <div className="mt-3 rounded-[5px] border border-white/5 bg-zinc-950/60 overflow-hidden">
         <button
           onClick={() => setOpen(o => !o)}
           className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors text-left"
@@ -260,6 +260,7 @@ function buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMes
       timestamp: event.timestamp || now,
       label: event.label || "Hydra",
       text: trimText(event.message),
+      action: event.action || null,
       metadata: event.data ? (typeof event.data === "string" ? JSON.parse(event.data) : event.data) : null
     });
   }
@@ -324,7 +325,7 @@ function ConversationItem({ item, onRetry }) {
     return (
       <div className="flex flex-col gap-2 self-start max-w-[90%]">
         <div 
-          className="flex items-center gap-3 py-2.5 px-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 text-[11px] cursor-pointer hover:bg-indigo-500/10 transition-all group"
+          className="flex items-center gap-3 py-2.5 px-4 rounded-[5px] bg-indigo-500/5 border border-indigo-500/10 text-[11px] cursor-pointer hover:bg-indigo-500/10 transition-all group"
           onClick={() => setShowDetail(!showDetail)}
         >
           <TriangleLoader />
@@ -371,7 +372,7 @@ function ConversationItem({ item, onRetry }) {
         </div>
 
         {showDetail && isCommand && (
-          <div className="bg-black rounded-2xl border border-emerald-500/20 p-5 font-mono text-xs leading-relaxed terminal-glow animate-in slide-in-from-top-2">
+          <div className="bg-black rounded-[5px] border border-emerald-500/20 p-5 font-mono text-xs leading-relaxed terminal-glow animate-in slide-in-from-top-2">
             <div className="flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
               <div className="flex gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/40" />
@@ -392,12 +393,31 @@ function ConversationItem({ item, onRetry }) {
         )}
 
         {showDetail && isEdit && (
-          <div className="bg-zinc-950 rounded-2xl border border-white/5 p-5 animate-in slide-in-from-top-2 shadow-inner">
+          <div className="bg-zinc-950 rounded-[5px] border border-white/5 p-5 animate-in slide-in-from-top-2 shadow-inner">
              <pre className="text-[11px] font-mono leading-relaxed overflow-x-auto custom-scrollbar text-zinc-400">
               <code>{item.metadata.diff || "No structural changes recorded."}</code>
             </pre>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (item.kind === "tool_start" || item.kind === "tool_done" || item.kind === "tool_error") {
+    const icons = { list_files: "📂", read_file: "📖", read_file_lines: "📖", read_files: "📖", search_files: "🔍", write_file: "✏️", replace: "✏️", apply_patch: "✏️", run_command: "⚡", rebuild_app: "🔨", reload_app: "🔄", restart_app: "🔄", delegate_task: "🤝", delegate_tasks: "🤝", batch_actions: "📦" };
+    const icon = icons[item.action] || "🔧";
+    const isDone = item.kind === "tool_done";
+    const isError = item.kind === "tool_error";
+    const dotColor = isError ? "bg-red-500" : isDone ? "bg-emerald-500" : "bg-amber-400 animate-pulse";
+    const textColor = isError ? "text-red-400" : isDone ? "text-emerald-400" : "text-amber-400";
+    const label = item.action ? item.action.replace(/_/g, " ") : "tool";
+    return (
+      <div className="flex items-center gap-2.5 self-start max-w-[90%] px-3 py-1.5 rounded-full bg-zinc-900/60 border border-white/5 animate-in fade-in duration-300">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+        <span className="text-[10px] text-zinc-600">{icon}</span>
+        <span className={`text-[10px] font-bold uppercase tracking-widest ${textColor}`}>{label}</span>
+        {item.text && <span className="text-[10px] text-zinc-600 truncate max-w-[300px]">{item.text}</span>}
+        <span className="text-zinc-700 tabular-nums ml-auto font-mono text-[9px]">{formatClock(item.timestamp)}</span>
       </div>
     );
   }
@@ -437,7 +457,10 @@ export function TaskBroadcast({
   taskEvents,
   onSendToAgent
 }) {
-  const [taskText, setTaskText] = React.useState("");
+  const DRAFT_KEY = "hydra:chat:draft";
+  const [taskText, setTaskText] = React.useState(() => {
+    try { return localStorage.getItem(DRAFT_KEY) || ""; } catch { return ""; }
+  });
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState("");
   const [localMessages, setLocalMessages] = React.useState([]);
@@ -465,6 +488,10 @@ export function TaskBroadcast({
     setLocalMessages(current => current.filter(lm => !tasks.some(t => trimText(t.user_task) === trimText(lm.text))));
   }, [tasks]);
 
+  React.useEffect(() => {
+    try { localStorage.setItem(DRAFT_KEY, taskText); } catch {}
+  }, [taskText]);
+
   const conversationItems = buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMessages });
   
   React.useEffect(() => {
@@ -479,6 +506,7 @@ export function TaskBroadcast({
     const nextTask = taskText.trim();
     setLocalMessages(prev => [...prev, { text: nextTask, timestamp: new Date().toISOString() }]);
     setTaskText("");
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
     setSending(true);
     setError("");
 

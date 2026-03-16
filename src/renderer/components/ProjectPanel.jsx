@@ -112,7 +112,7 @@ export function ProjectPanel({
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Project Name *</label>
                 <input
-                  className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                  className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Project Hydra"
@@ -124,12 +124,12 @@ export function ProjectPanel({
                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Root Folder</label>
                 <div className="flex gap-2">
                   <input
-                    className="flex-1 bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                    className="flex-1 bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
                     value={rootPath}
                     onChange={(e) => setRootPath(e.target.value)}
                     placeholder="Select or type path…"
                   />
-                  <button type="button" className="px-4 py-3 bg-zinc-800 border border-white/5 rounded-2xl text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors flex items-center gap-2" onClick={handleSelectFolder}>
+                  <button type="button" className="px-4 py-3 bg-zinc-800 border border-white/5 rounded-[5px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors flex items-center gap-2" onClick={handleSelectFolder}>
                     📁
                   </button>
                 </div>
@@ -139,7 +139,7 @@ export function ProjectPanel({
             <div className="flex flex-col gap-3 mt-4">
               <button 
                 type="button" 
-                className="w-full bg-indigo-600 text-white p-4 text-xs font-black uppercase tracking-[0.2em] rounded-2xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-indigo-600/20 active:scale-95"
+                className="w-full bg-indigo-600 text-white p-4 text-xs font-black uppercase tracking-[0.2em] rounded-[5px] hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-indigo-600/20 active:scale-95"
                 onClick={handleCreate} 
                 disabled={creating || !name.trim()}
               >

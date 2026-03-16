@@ -826,6 +826,16 @@ async function continueWithToolBridge({
       if (!approved) {
         followUpPrompt = formatRejectedToolPrompt(request);
       } else {
+        if (projectId && agent.role === "orchestrator") {
+          emitTaskEvent(projectId, {
+            taskId: taskRecord.id,
+            agentId: agent.id,
+            kind: "tool_start",
+            label: agent.name,
+            action: request.action,
+            message: request.reason || request.action
+          });
+        }
         const result = await executeToolRequest(executionContext.workspacePath, request, {
           delegateTask: handleDelegatedTask,
           delegateTasks: handleDelegatedTasks,
@@ -849,6 +859,16 @@ async function continueWithToolBridge({
         console.info(
           `[Hydra bridge] ${agent.name} via ${executionAgent.name} executed ${request.action} successfully.`
         );
+        if (projectId && agent.role === "orchestrator") {
+          emitTaskEvent(projectId, {
+            taskId: taskRecord.id,
+            agentId: agent.id,
+            kind: "tool_done",
+            label: agent.name,
+            action: request.action,
+            message: request.reason || request.action
+          });
+        }
 
         if (Array.isArray(result?.filesChanged) && result.filesChanged.length > 0) {
           recordFileChanges(accumulatedFileChanges, result.filesChanged);
@@ -868,6 +888,16 @@ async function continueWithToolBridge({
       console.error(
         `[Hydra bridge] ${agent.name} via ${executionAgent.name} failed ${request.action}: ${error.message}`
       );
+      if (projectId && agent.role === "orchestrator") {
+        emitTaskEvent(projectId, {
+          taskId: taskRecord.id,
+          agentId: agent.id,
+          kind: "tool_error",
+          label: agent.name,
+          action: request.action,
+          message: error.message
+        });
+      }
       followUpPrompt = formatToolResultPrompt(request, {
         ok: false,
         action: request.action,

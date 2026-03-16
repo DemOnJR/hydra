@@ -148,7 +148,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsSidebarCollapsed((v) => !v)}
-              className={`flex items-center gap-3 mb-1 rounded-2xl transition-colors ${
+              className={`flex items-center gap-3 mb-1 rounded-[5px] transition-colors ${
                 isSidebarCollapsed
                   ? "p-0"
                   : "p-2 w-full hover:bg-white/[0.03]"
@@ -185,7 +185,7 @@ export default function App() {
             <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden custom-scrollbar">
               <div className="flex flex-col items-center gap-3 pb-4">
                 {projectState.projects.length === 0 ? (
-                  <div className="w-10 h-10 rounded-2xl border border-dashed border-white/10 bg-zinc-950/40 flex items-center justify-center text-zinc-700 text-xs font-black" title="No projects">
+                  <div className="w-10 h-10 rounded-[5px] border border-dashed border-white/10 bg-zinc-950/40 flex items-center justify-center text-zinc-700 text-xs font-black" title="No projects">
                     —
                   </div>
                 ) : (
@@ -195,7 +195,7 @@ export default function App() {
                       <Tooltip key={project.id} content={getCollapsedProjectTooltip(project)} position="right">
                         <button
                           type="button"
-                          className={`relative w-10 h-10 rounded-2xl border transition-all flex items-center justify-center overflow-hidden ${
+                          className={`relative w-10 h-10 rounded-[5px] border transition-all flex items-center justify-center overflow-hidden ${
                             isActive
                               ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/20 shadow-sm"
                               : "bg-zinc-950 text-zinc-500 border-white/5 hover:bg-white/[0.03] hover:text-zinc-200 hover:border-white/10"
@@ -223,10 +223,10 @@ export default function App() {
       {/* Workspace center */}
       <section className="flex flex-col overflow-hidden p-4 gap-4 bg-zinc-950">
         <div className="flex items-center justify-between gap-4 shrink-0">
-          <div className="flex-1 flex justify-center min-w-0">
+          <div className="flex-1 flex justify-start min-w-0">
             <div
               ref={workspaceTabsRef}
-              className="flex gap-1 p-1 rounded-full bg-white/5 border border-white/5 shadow-inner overflow-x-auto overflow-y-hidden custom-scrollbar max-w-[600px] w-full mx-[20%]"
+              className="flex gap-1 p-1 rounded-[5px] bg-white/5 border border-white/5 shadow-inner overflow-x-auto overflow-y-hidden custom-scrollbar"
             >
               {[
                 { id: "orchestrator", label: "Orchestrator", icon: "💬" },
@@ -238,7 +238,7 @@ export default function App() {
                 <button
                   key={tab.id}
                   type="button"
-                  className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest rounded-full transition-all flex items-center gap-2 whitespace-nowrap ${
+                  className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest rounded-[5px] transition-all flex items-center gap-2 whitespace-nowrap ${
                     workspaceTab === tab.id 
                       ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
@@ -253,7 +253,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3 px-4 py-2 rounded-2xl border border-white/5 bg-zinc-900/50 shadow-sm" title={activeProject?.name || "No project selected"}>
+            <div className="flex items-center gap-3 px-4 py-2 rounded-[5px] border border-white/5 bg-zinc-900/50 shadow-sm" title={activeProject?.name || "No project selected"}>
               <div className="grid gap-0.5 min-w-0">
                 <span className="text-[9px] font-black tracking-[0.2em] uppercase text-zinc-500 leading-none">Active Project</span>
                 <strong className="text-xs text-indigo-400 truncate max-w-[140px] font-bold">{activeProject?.name || "None"}</strong>

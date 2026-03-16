@@ -95,7 +95,7 @@ export function TaskQueueViewer({ tasks = [], agents = [], onClear }) {
   if (tasks.length === 0 && !onClear) {
     return (
       <div className="flex flex-col gap-4 py-1">
-        <div className="p-12 text-center text-zinc-500 text-sm bg-zinc-900/50 border border-dashed border-white/5 rounded-2xl italic shadow-inner">
+        <div className="p-12 text-center text-zinc-500 text-sm bg-zinc-900/50 border border-dashed border-white/5 rounded-[5px] italic shadow-inner">
           <p>No tasks yet. Send a message to the orchestrator to get started.</p>
         </div>
       </div>
@@ -118,7 +118,7 @@ export function TaskQueueViewer({ tasks = [], agents = [], onClear }) {
       </div>
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-xs shadow-2xl flex flex-col gap-4 text-center animate-in zoom-in-95 duration-200">
+          <div className="bg-zinc-900 border border-white/10 rounded-[5px] p-6 w-full max-w-xs shadow-2xl flex flex-col gap-4 text-center animate-in zoom-in-95 duration-200">
             <div className="text-3xl mb-1">🧹</div>
             <div className="grid gap-1">
               <p className="text-zinc-100 font-bold">Clear all tasks and logs?</p>
@@ -136,7 +136,7 @@ export function TaskQueueViewer({ tasks = [], agents = [], onClear }) {
         </div>
       )}
       {tasks.length === 0 ? (
-        <div className="p-12 text-center text-zinc-500 text-sm bg-zinc-900/50 border border-dashed border-white/5 rounded-2xl italic shadow-inner">
+        <div className="p-12 text-center text-zinc-500 text-sm bg-zinc-900/50 border border-dashed border-white/5 rounded-[5px] italic shadow-inner">
           <p>No tasks yet. Send a message to the orchestrator to get started.</p>
         </div>
       ) : (
