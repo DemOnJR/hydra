@@ -98,7 +98,11 @@ function buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMes
   const taskLatestWorkingEvent = {};
   for (const event of taskEvents) {
     if (event.agentId !== orchestratorAgent?.id && event.kind !== "system") continue;
-    
+
+    // User messages are rendered from tasks/local optimistic messages.
+    // Rendering them from task events as well causes duplicates while the task is running.
+    if (event.kind === "user") continue;
+     
     // Hide events for tasks that are already rendered as finished blocks
     if (finishedTaskIds.has(event.taskId)) continue;
 

@@ -503,8 +503,8 @@ async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = nul
 
     console.info(`[Hydra] Routing ${agent.name} task to API caller (${agent.platform}) with model ${model}...`);
     
-    // Optimization: If the prompt is very short (e.g. "hi"), use a lite system prompt
-    const isLite = prompt.length < 50 && !prompt.toLowerCase().includes("file") && !prompt.toLowerCase().includes("run") && history.length === 0;
+    // Optimization: If the user task is very short (e.g. "hi"), use a lite system prompt
+    const isLite = task && task.length < 50 && !task.toLowerCase().includes("file") && !task.toLowerCase().includes("run") && history.length === 0;
     const systemPrompt = isLite 
       ? "You are a helpful AI assistant. Be concise."
       : "You are an AI agent in the Hydra ecosystem. Respond naturally to the user or use tools if requested.";

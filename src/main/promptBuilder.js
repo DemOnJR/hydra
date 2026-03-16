@@ -172,22 +172,22 @@ function buildToolBridgeSection(project = {}, agent = null, options = {}) {
     "```hydra",
     JSON.stringify(
       {
-        action: "read_file",
-        path: "src/index.js",
-        reason: "Need to inspect the current implementation before editing."
+        action: "list_files",
+        dir: ".",
+        reason: "Explore the project structure before taking action."
       },
       null,
       2
     ),
     "```",
     "Supported actions:",
-    '- {"action":"list_files","dir":"src","reason":"..."}',
+    '- {"action":"list_files","dir":".","reason":"..."}',
     '- {"action":"search_files","dir":"src","pattern":"TaskBroadcast","reason":"Locate the most relevant file by text or symbol before reading it."}',
-    '- {"action":"read_file","path":"src/index.js","reason":"..."}',
-    '- {"action":"read_files","paths":["src/App.jsx","src/styles.css"],"reason":"Read multiple relevant files together before editing."}',
+    '- {"action":"read_file","path":"package.json","reason":"..."}',
+    '- {"action":"read_files","paths":["package.json","README.md"],"reason":"Read multiple relevant files together before editing."}',
     '- {"action":"batch_actions","actions":[{"action":"search_files","dir":"src/renderer","pattern":"TaskBroadcast"},{"action":"read_files","paths":["src/renderer/components/TaskBroadcast.jsx","src/renderer/styles.css"]}],"reason":"Bundle read-only discovery to reduce round trips."}',
-    '- {"action":"apply_patch","patch":"diff --git a/src/index.js b/src/index.js\\n--- a/src/index.js\\n+++ b/src/index.js\\n@@ ...","reason":"Apply a targeted unified diff instead of rewriting the whole file."}',
-    '- {"action":"write_file","path":"src/index.js","content":"full file content","reason":"..."}',
+    '- {"action":"apply_patch","patch":"diff --git a/package.json b/package.json\\n--- a/package.json\\n+++ b/package.json\\n@@ ...","reason":"Apply a targeted unified diff instead of rewriting the whole file."}',
+    '- {"action":"write_file","path":"NEW_FILE.md","content":"full file content","reason":"..."}',
     '- {"action":"run_command","cmd":"npm test","reason":"..."}',
     '- {"action":"rebuild_app","reason":"Rebuild the Electron renderer after code changes."}',
     '- {"action":"reload_app","reason":"Reload the visible Electron window after a successful rebuild."}',
