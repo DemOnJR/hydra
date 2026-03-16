@@ -454,6 +454,10 @@ function scheduleAppRestart() {
 }
 
 async function openAgentSession(agentId, platform) {
+  if (platform === "local" || platform === "ollama" || platform === "google") {
+    return { bridgeConnected: true };
+  }
+
   const platformUrl = getPlatformUrl(platform);
 
   if (platform === "gemini") {
@@ -522,7 +526,7 @@ async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = nul
           emitTaskEvent(projectId, {
             taskId,
             agentId: agent.id,
-            kind: "working",
+            kind: "neural_streaming",
             label: agent.name,
             message: accumulatedText // This will update the UI in real-time
           });

@@ -96,15 +96,27 @@ function buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMes
 
   // 2. Handle Events (Only show if task NOT finished)
   const taskLatestWorkingEvent = {};
+  const neuralStreams = [];
+
   for (const event of taskEvents) {
     if (event.agentId !== orchestratorAgent?.id && event.kind !== "system") continue;
 
     // User messages are rendered from tasks/local optimistic messages.
-    // Rendering them from task events as well causes duplicates while the task is running.
     if (event.kind === "user") continue;
      
     // Hide events for tasks that are already rendered as finished blocks
     if (finishedTaskIds.has(event.taskId)) continue;
+
+    if (event.kind === "neural_streaming" && event.taskId) {
+      neuralStreams.push({
+        key: `neural-${event.taskId}-${event.id}`,
+        kind: "neural_streaming",
+        timestamp: event.timestamp || now,
+        label: event.label || "Hydra",
+        text: trimText(event.message)
+      });
+      continue;
+    }
 
     if ((event.kind === "working" || event.kind === "progress") && event.taskId) {
       taskLatestWorkingEvent[event.taskId] = event;
@@ -120,6 +132,9 @@ function buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMes
       metadata: event.data ? (typeof event.data === "string" ? JSON.parse(event.data) : event.data) : null
     });
   }
+
+  // Add neural streams
+  items.push(...neuralStreams);
 
   // Add the latest working state (Only for active tasks)
   for (const event of Object.values(taskLatestWorkingEvent)) {
@@ -152,6 +167,27 @@ function buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMes
 
 function ConversationItem({ item, onRetry }) {
   const [showDetail, setShowDetail] = React.useState(false);
+
+  if (item.kind === "neural_streaming") {
+    return (
+      <div className="flex flex-col gap-2 self-start max-w-[90%] animate-in fade-in slide-in-from-left-4 duration-500">
+        <div className="flex items-center gap-2 px-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)] animate-pulse" />
+          <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">
+            Neural Stream
+          </span>
+          <span className="text-zinc-700 tabular-nums ml-auto font-mono text-[9px]">{formatClock(item.timestamp)}</span>
+        </div>
+        <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-[24px] rounded-tl-none text-[14px] leading-relaxed font-medium text-zinc-300 whitespace-pre-wrap relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+          <div className="relative">
+            {item.text}
+            <span className="inline-block w-1.5 h-3.5 bg-indigo-500 ml-1.5 animate-pulse rounded-full align-middle" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (item.kind === "thinking_process") {
     return (
