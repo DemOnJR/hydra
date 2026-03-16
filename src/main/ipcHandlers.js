@@ -485,7 +485,7 @@ async function inspectAgentSession(agentId, platform) {
 
 import { callAI } from "../../server/ai/caller.js";
 
-async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = null, projectId = null, history = []) {
+async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = null, projectId = null, history = [], task = null) {
   if (agent.platform === "ollama" || agent.platform === "google" || agent.platform === "local") {
     let model = agent.specialty?.trim();
     
@@ -648,7 +648,8 @@ async function continueWithToolBridge({
   taskId,
   contextPayload,
   executionContext,
-  initialPrompt
+  initialPrompt,
+  task
 }) {
   let latestResponse = "";
   let executedSteps = 0;
@@ -762,7 +763,7 @@ async function continueWithToolBridge({
   let currentPrompt = nextPrompt;
 
   while (true) {
-    latestResponse = await sendPromptAndWait(executionAgent, currentPrompt, 240000, taskId, projectId, history);
+    latestResponse = await sendPromptAndWait(executionAgent, currentPrompt, 240000, taskId, projectId, history, task);
     
     // Add current turn to history
     history.push({ role: "user", content: currentPrompt });
@@ -1075,7 +1076,8 @@ async function executeAgentTask({
         taskId: taskRecord.id,
         contextPayload,
         executionContext,
-        initialPrompt: buildExecutionPrompt(activeExecutionAgent)
+        initialPrompt: buildExecutionPrompt(activeExecutionAgent),
+        task
       });
 
       const temporaryUnavailableMessage = extractTemporaryUnavailableMessage(bridgeResult.response);
