@@ -96,6 +96,16 @@ async function isDebuggerReady(agentId) {
   return Boolean(version?.webSocketDebuggerUrl);
 }
 
+export async function isGeminiSessionConnected(agentId) {
+  const existing = activeSessions.get(agentId);
+
+  if (existing?.browser?.isConnected?.()) {
+    return true;
+  }
+
+  return isDebuggerReady(agentId);
+}
+
 function launchGeminiBrowser(agentId) {
   const browserPath = findChromePath();
   const profileDir = getProfileDir(agentId);

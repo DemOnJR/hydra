@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import * as React from "react";
+import { request } from "../api.js";
 
-export function useTaskManager({ activeProjectId, agents, markAgentStatus }) {
-  const [responses, setResponses] = useState([]);
-  const [taskQueues, setTaskQueues] = useState({});
-  const [taskEvents, setTaskEvents] = useState([]);
-  const activeTasksRef = useRef({});
-  const taskQueuesRef = useRef({});
+export function useTaskManager({ activeProjectId, agents, markAgentStatus, serverUrl }) {
+  const [responses, setResponses] = React.useState([]);
+  const [taskQueues, setTaskQueues] = React.useState({});
+  const [taskEvents, setTaskEvents] = React.useState([]);
+  const activeTasksRef = React.useRef({});
+  const taskQueuesRef = React.useRef({});
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!window.agentSync?.onTaskEvent) {
       return undefined;
     }
@@ -131,6 +132,26 @@ export function useTaskManager({ activeProjectId, agents, markAgentStatus }) {
     await Promise.all(targets.map((agent) => sendTask(agent.id, taskText)));
   }
 
+  async function clearAll() {
+    if (activeProjectId && serverUrl) {
+      try {
+        await request(serverUrl, `/api/tasks?projectId=${encodeURIComponent(activeProjectId)}`, {
+          method: "DELETE"
+        });
+      } catch (e) {
+        console.warn("[TaskManager] Failed to clear tasks from server:", e.message);
+      }
+    }
+    for (const agent of agents) {
+      await markAgentStatus(agent.id, "sleeping");
+    }
+    setResponses([]);
+    setTaskEvents([]);
+    activeTasksRef.current = {};
+    taskQueuesRef.current = {};
+    setTaskQueues({});
+  }
+
   return {
     responses,
     taskQueues,
@@ -138,6 +159,7 @@ export function useTaskManager({ activeProjectId, agents, markAgentStatus }) {
       (event) => !activeProjectId || event.projectId === activeProjectId
     ),
     sendTask,
-    broadcast
+    broadcast,
+    clearAll
   };
 }

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getPendingTodos, getProjectById, getProjectContext } from "../db/queries.js";
+import { getPendingTodos, getProjectById, getProjectContext, getProjectConversationTurns } from "../db/queries.js";
 import { getGitStatus, listFiles } from "./executor.js";
 
 function readPackageMetadata(projectRoot) {
@@ -72,8 +72,9 @@ export async function buildOrchestratorContext(projectId) {
   }
 
   const savedContext = getProjectContext(projectId);
-  const todos = getPendingTodos(projectId, 50);
+  const todos = getPendingTodos(projectId, 20); // Reduced from 50
   const packageInfo = readPackageMetadata(absoluteRoot);
+  const recentTurns = getProjectConversationTurns(projectId, { limit: 6 }); // Reduced from 12
 
   return {
     project: {
@@ -93,7 +94,9 @@ export async function buildOrchestratorContext(projectId) {
       availableChecks: packageInfo.availableChecks
     },
     todos,
-    files: listFiles(absoluteRoot, ".", { maxDepth: 3, maxEntries: 120 }),
-    packageInfo
+    // Pruned file list: shallow depth for speed
+    files: listFiles(absoluteRoot, ".", { maxDepth: 2, maxEntries: 60 }),
+    packageInfo,
+    recentTurns: recentTurns.reverse()
   };
 }

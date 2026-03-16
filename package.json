@@ -9,14 +9,16 @@
     "dev": "concurrently -k \"npm:server:dev\" \"npm:renderer:dev\" \"npm:app:dev\"",
     "renderer:dev": "vite",
     "server:dev": "nodemon --watch server --ext js --exec node server/index.js",
-    "app:dev": "wait-on http://127.0.0.1:5173 http://127.0.0.1:3847/health && cross-env NODE_ENV=development VITE_DEV_SERVER_URL=http://127.0.0.1:5173 AGENTSYNC_EXTERNAL_SERVER=1 electron .",
+    "app:dev": "wait-on -t 60000 http://127.0.0.1:5175 http://127.0.0.1:3847/health && cross-env NODE_ENV=development VITE_DEV_SERVER_URL=http://127.0.0.1:5175 AGENTSYNC_EXTERNAL_SERVER=1 electron .",
     "start": "cross-env NODE_ENV=production electron .",
     "start:server": "node server/index.js",
     "build:renderer": "vite build",
-    "db:init": "node server/db/init.js"
+    "db:init": "node server/db/init.js",
+    "monitor:errors": "node scripts/monitor-errors.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@huggingface/transformers": "^4.0.0-next.7",
     "@modelcontextprotocol/sdk": "^1.20.0",
     "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
@@ -24,6 +26,7 @@
     "electron": "^35.0.0",
     "express": "^4.21.2",
     "keytar": "^7.9.0",
+    "onnxruntime-node": "^1.24.3",
     "openai": "^6.29.0",
     "playwright": "^1.51.1",
     "react": "^19.1.0",
@@ -33,10 +36,14 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.27",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "nodemon": "^3.1.10",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
     "vite": "^6.2.0",
     "wait-on": "^8.0.2"
   }

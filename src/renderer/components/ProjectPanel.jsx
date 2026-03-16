@@ -1,45 +1,24 @@
-import { useEffect, useState } from "react";
+import * as React from "react";
 
 export function ProjectPanel({
   projects,
-  activeProject,
   activeProjectId,
   loading,
   onCreateProject,
   onActivateProject,
-  onUpdateProject,
   onDeleteProject
 }) {
-  const [showModal, setShowModal] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [rootPath, setRootPath] = useState("");
-  const [mode, setMode] = useState("manual");
-  const [creating, setCreating] = useState(false);
-
-  const [editDescription, setEditDescription] = useState("");
-  const [editRootPath, setEditRootPath] = useState("");
-  const [editMode, setEditMode] = useState("manual");
-
-  useEffect(() => {
-    setEditDescription(activeProject?.description || "");
-    setEditRootPath(activeProject?.root_path || "");
-    setEditMode(activeProject?.mode || "manual");
-  }, [activeProject]);
+  const [showModal, setShowModal] = React.useState(false);
+  const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [rootPath, setRootPath] = React.useState("");
+  const [mode, setMode] = React.useState("manual");
+  const [creating, setCreating] = React.useState(false);
 
   async function handleSelectFolder() {
     try {
       const result = await window.agentSync.selectFolder();
       if (result) setRootPath(result);
-    } catch {
-      // dialog cancelled
-    }
-  }
-
-  async function handleSelectEditFolder() {
-    try {
-      const result = await window.agentSync.selectFolder();
-      if (result) setEditRootPath(result);
     } catch {
       // dialog cancelled
     }
@@ -65,51 +44,43 @@ export function ProjectPanel({
     }
   }
 
-  async function handleUpdate(event) {
-    event.preventDefault();
-    if (!activeProjectId) return;
-    await onUpdateProject(activeProjectId, {
-      description: editDescription.trim(),
-      rootPath: editRootPath.trim(),
-      mode: editMode
-    });
-  }
-
   return (
-    <section className="panel">
-      <div className="panel-header">
-        <h2>Projects</h2>
-        {loading ? <span className="pill">Syncing</span> : null}
-      </div>
-
+    <section className="flex flex-col gap-4">
       <button
         type="button"
-        className="project-new-btn"
+        className="w-full bg-indigo-600 text-white rounded-xl p-3 text-xs font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 shrink-0"
         onClick={() => setShowModal(true)}
       >
-        <span>＋</span> New project
+        <span className="text-lg leading-none">+</span> New project
       </button>
 
-      <div className="list">
+      <div className="flex flex-col gap-1 overflow-y-auto custom-scrollbar pr-1">
         {projects.length === 0 ? (
-          <p className="empty-state">No projects yet.</p>
+          <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest py-8 text-center border border-dashed border-white/5 rounded-xl">No projects</p>
         ) : (
           projects.map((project) => (
-            <div key={project.id} className="project-list-row">
+            <div key={project.id} className="flex items-center group relative">
               <button
                 type="button"
-                className={project.id === activeProjectId ? "list-item active" : "list-item"}
+                className={`flex-1 flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${
+                  project.id === activeProjectId 
+                    ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 shadow-sm" 
+                    : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300 border-transparent"
+                }`}
                 onClick={() => onActivateProject(project.id)}
               >
-                <span>{project.name}</span>
-                {project.is_active ? <span className="pill success">Active</span> : null}
+                <span className="truncate pr-4">{project.name}</span>
+                {project.id === activeProjectId && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                )}
               </button>
               <button
                 type="button"
-                className="delete-project-btn"
+                className="absolute right-2 p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 bg-zinc-900/80 backdrop-blur-sm border border-white/5"
                 title="Delete project"
-                onClick={() => {
-                  if (window.confirm(`Delete "${project.name}"? This cannot be undone.`)) {
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Delete "${project.name}"?`)) {
                     onDeleteProject(project.id);
                   }
                 }}
@@ -119,99 +90,58 @@ export function ProjectPanel({
         )}
       </div>
 
-      {activeProject ? (
-        <form className="stack-form project-settings-form" onSubmit={handleUpdate}>
-          <div className="panel-header">
-            <h2>Settings</h2>
-            <span className="pill">{activeProject.mode || "manual"}</span>
-          </div>
-          <textarea
-            value={editDescription}
-            onChange={(e) => setEditDescription(e.target.value)}
-            placeholder="Project description"
-            rows={2}
-          />
-          <div className="modal-field">
-            <div className="folder-picker">
-              <input
-                value={editRootPath}
-                onChange={(e) => setEditRootPath(e.target.value)}
-                placeholder="Root path"
-              />
-              <button type="button" className="folder-btn" onClick={handleSelectEditFolder}>
-                📁
-              </button>
-            </div>
-          </div>
-          <select value={editMode} onChange={(e) => setEditMode(e.target.value)}>
-            <option value="manual">manual</option>
-            <option value="semi-auto">semi-auto</option>
-            <option value="full-auto">full-auto</option>
-          </select>
-          <button type="submit">Save</button>
-        </form>
-      ) : null}
-
-      {showModal ? (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal">
-            <div className="modal-header">
-              <h2>New Project</h2>
-              <button type="button" className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+      {showModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+          <div className="bg-zinc-900 border border-white/10 rounded-[32px] p-8 w-full max-w-md shadow-2xl flex flex-col gap-6 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between">
+              <div className="grid gap-1">
+                <h2 className="text-2xl font-black text-zinc-100 tracking-tighter leading-none">New Project</h2>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Workspace Creation</p>
+              </div>
+              <button type="button" className="w-10 h-10 flex items-center justify-center rounded-full bg-zinc-800 text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-all shadow-lg active:scale-90" onClick={() => setShowModal(false)}>✕</button>
             </div>
 
-            <div className="modal-field">
-              <label className="modal-label">Project name *</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. My App"
-                autoFocus
-              />
-            </div>
-
-            <div className="modal-field">
-              <label className="modal-label">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Short description (optional)"
-                rows={2}
-              />
-            </div>
-
-            <div className="modal-field">
-              <label className="modal-label">Root folder</label>
-              <div className="folder-picker">
+            <div className="grid gap-5">
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Project Name *</label>
                 <input
-                  value={rootPath}
-                  onChange={(e) => setRootPath(e.target.value)}
-                  placeholder="Select or type path…"
+                  className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Project Hydra"
+                  autoFocus
                 />
-                <button type="button" className="folder-btn" onClick={handleSelectFolder}>
-                  📁 Browse
-                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Root Folder</label>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                    value={rootPath}
+                    onChange={(e) => setRootPath(e.target.value)}
+                    placeholder="Select or type path…"
+                  />
+                  <button type="button" className="px-4 py-3 bg-zinc-800 border border-white/5 rounded-2xl text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors flex items-center gap-2" onClick={handleSelectFolder}>
+                    📁
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="modal-field">
-              <label className="modal-label">Mode</label>
-              <select value={mode} onChange={(e) => setMode(e.target.value)}>
-                <option value="manual">manual</option>
-                <option value="semi-auto">semi-auto</option>
-                <option value="full-auto">full-auto</option>
-              </select>
-            </div>
-
-            <div className="modal-actions">
-              <button type="button" className="ghost-button" onClick={() => setShowModal(false)}>Cancel</button>
-              <button type="button" onClick={handleCreate} disabled={creating || !name.trim()}>
-                {creating ? "Creating…" : "Create project"}
+            <div className="flex flex-col gap-3 mt-4">
+              <button 
+                type="button" 
+                className="w-full bg-indigo-600 text-white p-4 text-xs font-black uppercase tracking-[0.2em] rounded-2xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-indigo-600/20 active:scale-95"
+                onClick={handleCreate} 
+                disabled={creating || !name.trim()}
+              >
+                {creating ? "Initializing..." : "Create Workspace"}
               </button>
             </div>
           </div>
         </div>
-      ) : null}
+      )}
     </section>
   );
 }

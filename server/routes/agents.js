@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { MODEL_CATALOG } from "../ai/modelConfig.js";
 import {
   createAgent,
   deleteAgent,
@@ -13,6 +14,10 @@ const router = Router();
 
 router.get("/", (_req, res) => {
   res.json(getAllAgents());
+});
+
+router.get("/catalog", (_req, res) => {
+  res.json(MODEL_CATALOG);
 });
 
 router.post("/", (req, res) => {

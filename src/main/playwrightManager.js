@@ -276,8 +276,12 @@ async function ensurePlatformPage(session, platformUrl, options = {}) {
   return session.page;
 }
 
-export async function saveSession(agentId) {
-  return activeSessions.get(agentId) || null;
+export function isSessionConnected(agentId) {
+  const session = activeSessions.get(agentId);
+  if (!session) {
+    return true;
+  }
+  return session.browser?.isConnected() === true;
 }
 
 export async function openAgent(agentId, platformUrl) {
@@ -350,10 +354,6 @@ export async function waitForResponse(agentId, platform, timeoutMs = 120000, opt
 
     throw error;
   }
-}
-
-export async function closeAgent(agentId) {
-  activeSessions.delete(agentId);
 }
 
 export async function shutdown() {

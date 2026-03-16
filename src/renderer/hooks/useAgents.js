@@ -1,10 +1,21 @@
-import { useEffect, useState } from "react";
+import * as React from "react";
 import { request } from "../api.js";
 
 export function useAgents(serverUrl) {
-  const [agents, setAgents] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [agents, setAgents] = React.useState([]);
+  const [catalog, setCatalog] = React.useState({});
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  async function refreshCatalog() {
+    if (!serverUrl) return;
+    try {
+      const data = await request(serverUrl, "/api/agents/catalog");
+      setCatalog(data);
+    } catch (e) {
+      console.warn("Failed to fetch model catalog", e);
+    }
+  }
 
   async function refreshAgents(options = {}) {
     if (!serverUrl) {
@@ -28,11 +39,12 @@ export function useAgents(serverUrl) {
     }
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     let cancelled = false;
     let intervalId = null;
 
     refreshAgents();
+    refreshCatalog();
     intervalId = window.setInterval(() => {
       if (!cancelled) {
         refreshAgents({ silent: true });
@@ -111,6 +123,7 @@ export function useAgents(serverUrl) {
 
   return {
     agents,
+    catalog,
     loading,
     error,
     createAgent,
@@ -119,6 +132,7 @@ export function useAgents(serverUrl) {
     updateAgentRole,
     updateAgentSpecialty,
     renameAgent,
-    refreshAgents
+    refreshAgents,
+    refreshCatalog
   };
 }

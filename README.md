@@ -1,11 +1,11 @@
 # AgentSync — Multi-AI Agent Orchestrator
 
-Aplicatie desktop care coordoneaza mai multi agenti AI (ChatGPT, Gemini, Claude) prin sesiuni reale de browser controlate cu Playwright, context partajat si task management local.
+Aplicatie desktop care coordoneaza mai multi agenti AI (ChatGPT, Gemini, Claude) prin sesiuni reale de browser controlate prin CDP (Chrome DevTools Protocol) cu Playwright, context partajat si task management local.
 
 ## Ce face
 
-- Lanseaza browsere reale (Chrome / Edge) per agent via Playwright
-- Injecteaza prompt-uri si colecteaza raspunsuri automat
+- Lanseaza browsere reale (Chrome / Edge) per agent via CDP
+- Injecteaza prompt-uri si colecteaza raspunsuri automat (bypass Cloudflare)
 - Gestioneaza proiecte, knowledge base si task-uri local (SQLite)
 - Expune un Context Server REST + MCP pentru agenti CLI
 - UI Electron dark-mode cu layout 3 coloane
@@ -52,17 +52,11 @@ agent-sync/
 ├── README.md
 ├── ARCHITECTURE.md
 ├── SETUP.md
-├── PLAYWRIGHT-SETUP.md
-├── CONTEXT-SERVER.md
-├── ELECTRON-APP.md
-├── CONTEXT-INJECTION.md
-├── TASK-MANAGER.md
-├── DATABASE-SCHEMA.md
-├── ORCHESTRATOR.md
-├── AI-CALLER.md
-├── NOTIFICATIONS-APPROVAL.md
-├── PIPELINE-CICD.md
 ├── ROADMAP.md
+├── docs/
+│   ├── README.md
+│   └── legacy/
+│       └── ...
 ├── injectors/
 │   ├── chatgpt.js
 │   ├── claude.js
@@ -124,15 +118,22 @@ npm run start
 
 | Fisier | Rol |
 |---|---|
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Arhitectura tehnica generala |
 | [SETUP.md](./SETUP.md) | Instalare si configurare |
-| [PLAYWRIGHT-SETUP.md](./PLAYWRIGHT-SETUP.md) | Migrare la Playwright |
-| [CONTEXT-SERVER.md](./CONTEXT-SERVER.md) | REST API, SQLite, MCP |
-| [ELECTRON-APP.md](./ELECTRON-APP.md) | Electron main/preload/renderer |
-| [CONTEXT-INJECTION.md](./CONTEXT-INJECTION.md) | Injectie si colectare Playwright |
-| [TASK-MANAGER.md](./TASK-MANAGER.md) | Broadcast, queue, response flow |
-| [DATABASE-SCHEMA.md](./DATABASE-SCHEMA.md) | Structura bazei de date |
-| [ORCHESTRATOR.md](./ORCHESTRATOR.md) | Orchestrator session runner |
-| [AI-CALLER.md](./AI-CALLER.md) | AI caller si key manager |
-| [NOTIFICATIONS-APPROVAL.md](./NOTIFICATIONS-APPROVAL.md) | Approval flow pentru tool requests |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | Arhitectura tehnica generala |
 | [ROADMAP.md](./ROADMAP.md) | MVP si pasi urmatori |
+| [docs/README.md](./docs/README.md) | Index de documentatie (inclusiv legacy) |
+| [APP-ERRORS.md](./APP-ERRORS.md) | Log centralizat de erori (generat automat) |
+
+## Monitoring & Task Workflow
+
+### Task Workflow (Retry & Templates)
+- **Retry**: Dacă un task eșuează, poți apăsa butonul **Retry** direct în chat-ul Orchestratorului pentru a retrimite solicitarea.
+- **Templates**: Folosește butonul **Templates** din panoul de info al Orchestratorului pentru a încărca prompt-uri predefinite (ex: Project Audit).
+- **Cleanup la pornire**: Aplicația curăță automat task-urile "blocate" (care au rămas în starea working după un crash) și resetează agenții.
+
+### Monitorizarea Erorilor
+Pentru a monitoriza sănătatea aplicației și a colecta erorile într-un singur loc:
+```bash
+npm run monitor:errors
+```
+Acest script va genera sau actualiza fișierul `APP-ERRORS.md` cu toate erorile recente din log-urile sesiunilor.

@@ -414,6 +414,11 @@ export function getAgentById(id) {
 }
 
 export function createAgent({ name, platform, role = "worker", specialty = "" }) {
+  const validPlatforms = ["chatgpt", "gemini", "claude", "ollama", "local", "other"];
+  if (!validPlatforms.includes(platform)) {
+    throw new Error(`Invalid platform "${platform}". Must be one of: ${validPlatforms.join(", ")}`);
+  }
+
   const id = uuidv4();
   const partition = `legacy-agent-${id}`;
   const sessionDir = `agent-${id}`;
@@ -653,6 +658,12 @@ export function getRecentTasks(projectId, limit = 50) {
 
   const statement = getDb().prepare(baseQuery);
   return projectId ? statement.all(projectId, limit) : statement.all(limit);
+}
+
+export function clearProjectTasks(projectId) {
+  const db = getDb();
+  const stmt = db.prepare("DELETE FROM tasks WHERE project_id = ?");
+  return stmt.run(projectId);
 }
 
 export function getProjectTodos(projectId, options = {}) {

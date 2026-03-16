@@ -42,25 +42,6 @@ export function fetchAgents() {
   return request("/api/agents");
 }
 
-export function getBrowserBridgeState(agentId) {
-  return request(`/api/browser-bridge/agents/${agentId}/state`);
-}
-
-export function enqueueBrowserBridgeCommand(agentId, type, payload = {}) {
-  return request("/api/browser-bridge/commands", {
-    method: "POST",
-    body: JSON.stringify({
-      agentId,
-      type,
-      payload
-    })
-  });
-}
-
-export function getBrowserBridgeCommand(commandId) {
-  return request(`/api/browser-bridge/commands/${commandId}`);
-}
-
 export function saveDecisions(projectId, decisions) {
   return request(`/api/context/${projectId}/decisions/bulk`, {
     method: "POST",

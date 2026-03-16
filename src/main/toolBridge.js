@@ -332,11 +332,28 @@ function computeFileChangeStats(filePath, beforeSnapshot, afterSnapshot) {
       ? Number.parseInt(match[2] === "-" ? "0" : match[2], 10)
       : fallbackStats.deletedLines;
 
+    const fullDiffResult = spawnSync(
+      "git",
+      ["diff", "--no-index", "--no-renames", "--color=never", "--", beforeTempFile, afterTempFile],
+      {
+        encoding: "utf8",
+        windowsHide: true
+      }
+    );
+
+    let diffText = (fullDiffResult.stdout || "").trim();
+    if (diffText) {
+      diffText = diffText
+        .replace(new RegExp(beforeTempFile.replace(/\\/g, "\\\\"), "g"), `a/${filePath}`)
+        .replace(new RegExp(afterTempFile.replace(/\\/g, "\\\\"), "g"), `b/${filePath}`);
+    }
+
     return {
       path: filePath,
       status: !beforeExists ? "added" : !afterExists ? "deleted" : "modified",
       addedLines: Number.isNaN(addedLines) ? fallbackStats.addedLines : addedLines,
-      deletedLines: Number.isNaN(deletedLines) ? fallbackStats.deletedLines : deletedLines
+      deletedLines: Number.isNaN(deletedLines) ? fallbackStats.deletedLines : deletedLines,
+      diff: diffText
     };
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -664,28 +681,32 @@ function tryParseRequest(candidateText) {
 }
 
 export function parseToolRequest(responseText) {
+  const text = String(responseText ?? "").trim();
+  
+  if (!text) {
+    return null;
+  }
+
   const patterns = [
-    /```hydra(?:-tool)?\s*([\s\S]*?)```/i,
-    /```json\s*([\s\S]*?"action"[\s\S]*?)```/i,
-    /(?:^|\n)\s*hydra(?:-tool)?\s*([\[{][\s\S]*)$/i,
-    /(?:^|\n)\s*hydra(?:-tool)?\s*\n([\s\S]*)$/i
+    /```hydra(?:-tool)?\s*([\s\S]*?)```/gi,
+    /```json\s*([\s\S]*?"action"[\s\S]*?)```/gi,
+    /```(?:[a-z]*)?\s*([\s\S]*?"action"[\s\S]*?)```/gi,
+    /(?:^|\n)\s*hydra(?:-tool)?\s*([\[{][\s\S]*)$/gi,
+    /(?:^|\n)\s*hydra(?:-tool)?\s*\n([\s\S]*)$/gi
   ];
 
   for (const pattern of patterns) {
-    const match = responseText.match(pattern);
+    const matches = text.matchAll(pattern);
 
-    if (!match) {
-      continue;
-    }
-
-    const normalized = tryParseRequest(match[1]);
-
-    if (normalized) {
-      return normalized;
+    for (const match of matches) {
+      const normalized = tryParseRequest(match[1]);
+      if (normalized) {
+        return normalized;
+      }
     }
   }
 
-  return tryParseRequest(responseText);
+  return tryParseRequest(text);
 }
 
 function summarizeRequest(request) {

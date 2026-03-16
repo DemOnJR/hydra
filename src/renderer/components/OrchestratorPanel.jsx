@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+import * as React from "react";
 import { request } from "../api.js";
 
 export function OrchestratorPanel({ serverUrl, activeProject }) {
-  const [sessions, setSessions] = useState([]);
-  const [selectedSessionId, setSelectedSessionId] = useState("");
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [actionMessage, setActionMessage] = useState("");
-  const [error, setError] = useState("");
+  const [sessions, setSessions] = React.useState([]);
+  const [selectedSessionId, setSelectedSessionId] = React.useState("");
+  const [logs, setLogs] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [actionMessage, setActionMessage] = React.useState("");
+  const [error, setError] = React.useState("");
 
   async function refreshSessions() {
     if (!serverUrl || !activeProject?.id) {
@@ -32,7 +32,7 @@ export function OrchestratorPanel({ serverUrl, activeProject }) {
     }
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     let cancelled = false;
     let intervalId;
 
@@ -67,7 +67,7 @@ export function OrchestratorPanel({ serverUrl, activeProject }) {
     };
   }, [serverUrl, activeProject?.id]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     let cancelled = false;
 
     async function loadLogs() {

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  clearProjectTasks,
   completeTask,
   createTask,
   getRecentTasks,
@@ -42,6 +43,18 @@ router.patch("/:id/status", (req, res) => {
 router.patch("/:id/complete", (req, res) => {
   const { response = "" } = req.body ?? {};
   res.json(completeTask(req.params.id, response));
+});
+
+router.delete("/", (req, res) => {
+  const projectId = req.query.projectId?.toString() || null;
+  
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required." });
+    return;
+  }
+  
+  clearProjectTasks(projectId);
+  res.status(204).end();
 });
 
 export default router;

@@ -2,12 +2,14 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { buildPrompt } from "./promptBuilder.js";
 import {
   inspectAgent as inspectPlaywrightAgent,
+  isSessionConnected,
   openAgent as openPlaywrightAgent,
   injectPrompt,
   waitForResponse
 } from "./playwrightManager.js";
 import {
   inspectGeminiAgent,
+  isGeminiSessionConnected,
   openGeminiAgent,
   sendGeminiPrompt
 } from "./geminiBridgeManager.js";
@@ -121,7 +123,8 @@ function recordFileChanges(changeMap, filesChanged = []) {
       path: filePath,
       status: String(file?.status ?? "modified"),
       addedLines: 0,
-      deletedLines: 0
+      deletedLines: 0,
+      diffs: []
     };
 
     existing.status =
@@ -132,6 +135,11 @@ function recordFileChanges(changeMap, filesChanged = []) {
           : existing.status;
     existing.addedLines += Number(file?.addedLines ?? 0) || 0;
     existing.deletedLines += Number(file?.deletedLines ?? 0) || 0;
+    
+    if (file?.diff) {
+      existing.diffs.push(file.diff);
+    }
+    
     changeMap.set(filePath, existing);
   }
 }
@@ -146,14 +154,21 @@ function formatHydraChangeSummary(changeMap) {
   const totalAdded = files.reduce((sum, file) => sum + (Number(file.addedLines) || 0), 0);
   const totalDeleted = files.reduce((sum, file) => sum + (Number(file.deletedLines) || 0), 0);
 
-  return [
+  const sections = [
     "[Hydra Change Summary]",
-    `Files changed: ${files.length} | +${totalAdded} / -${totalDeleted}`,
-    ...files.map(
-      (file) =>
-        `- ${file.path} (${file.status}, +${Number(file.addedLines) || 0} / -${Number(file.deletedLines) || 0})`
-    )
-  ].join("\n");
+    `Files changed: ${files.length} | +${totalAdded} / -${totalDeleted}`
+  ];
+
+  for (const file of files) {
+    sections.push(`- ${file.path} (${file.status}, +${Number(file.addedLines) || 0} / -${Number(file.deletedLines) || 0})`);
+    if (file.diffs && file.diffs.length > 0) {
+      sections.push("```diff");
+      sections.push(file.diffs.join("\n\n"));
+      sections.push("```");
+    }
+  }
+
+  return sections.join("\n");
 }
 
 function appendHydraChangeSummary(response, changeMap) {
@@ -247,6 +262,33 @@ function clearAgentTemporaryUnavailability(agentId) {
   temporarilyUnavailableAgents.delete(agentId);
 }
 
+async function checkAgentBridgeConnection(agentId, platform) {
+  if (platform === "gemini") {
+    return isGeminiSessionConnected(agentId);
+  }
+
+  return isSessionConnected(agentId);
+}
+
+async function wakeUpAgent(agent) {
+  console.info(`[Hydra] Attempting to wake up agent ${agent.name}...`);
+  try {
+    await openAgentSession(agent.id, agent.platform);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const isConnected = await checkAgentBridgeConnection(agent.id, agent.platform);
+    if (isConnected) {
+      console.info(`[Hydra] Agent ${agent.name} is now connected.`);
+      clearAgentTemporaryUnavailability(agent.id);
+      return true;
+    }
+    console.warn(`[Hydra] Agent ${agent.name} did not reconnect after opening browser.`);
+    return false;
+  } catch (error) {
+    console.error(`[Hydra] Failed to wake up agent ${agent.name}:`, error.message);
+    return false;
+  }
+}
+
 function getAvailableWorkers(contextPayload, agent) {
   return (contextPayload?.agents || []).filter(
     (candidate) => candidate.role === "worker" && candidate.id !== agent?.id
@@ -302,8 +344,12 @@ async function pickFallbackExecutionAgent({
     return null;
   }
 
-  candidates.sort((left, right) => compareFallbackAgents(left, right, executionAgent.platform));
-  return candidates[0] || null;
+  if (candidates.length > 0) {
+    candidates.sort((left, right) => compareFallbackAgents(left, right, executionAgent.platform));
+    return candidates[0] || null;
+  }
+
+  return null;
 }
 
 function formatDelegationRequiredPrompt(request, workers) {
@@ -357,7 +403,7 @@ async function openAgentSession(agentId, platform) {
   const platformUrl = getPlatformUrl(platform);
 
   if (platform === "gemini") {
-    return openGeminiAgent(agentId, platformUrl);
+    return openGeminiAgent(agentId);
   }
 
   return openPlaywrightAgent(agentId, platformUrl);
@@ -366,14 +412,86 @@ async function openAgentSession(agentId, platform) {
 async function inspectAgentSession(agentId, platform) {
   const platformUrl = getPlatformUrl(platform);
 
+  let state;
   if (platform === "gemini") {
-    return inspectGeminiAgent(agentId, platformUrl);
+    state = await inspectGeminiAgent(agentId, platformUrl);
+  } else {
+    state = await inspectPlaywrightAgent(agentId, platform, platformUrl);
   }
 
-  return inspectPlaywrightAgent(agentId, platform, platformUrl);
+  if (state.loggedIn) {
+    const agent = getAgentById(agentId);
+    if (agent?.status === "error") {
+      await updateAgentStatus(agentId, "done");
+    }
+  }
+
+  return state;
 }
 
-async function sendPromptAndWait(agent, prompt, timeoutMs = 240000) {
+import { callAI } from "../../server/ai/caller.js";
+
+async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = null, projectId = null, history = []) {
+  if (agent.platform === "ollama" || agent.platform === "google" || agent.platform === "local") {
+    let model = agent.specialty?.trim();
+    
+    if (!model) {
+      if (agent.platform === "ollama") {
+        model = process.env.OLLAMA_MODEL || "qwen3.5:0.8b";
+      } else if (agent.platform === "local") {
+        model = "local/onnx-community/Qwen3.5-0.8B-ONNX";
+      } else {
+        model = "gemini-1.5-pro";
+      }
+    } else if (agent.platform === "local" && !model.startsWith("local/")) {
+      model = `local/${model}`;
+    }
+
+    console.info(`[Hydra] Routing ${agent.name} task to API caller (${agent.platform}) with model ${model}...`);
+    
+    // Optimization: If the prompt is very short (e.g. "hi"), use a lite system prompt
+    const isLite = prompt.length < 50 && !prompt.toLowerCase().includes("file") && !prompt.toLowerCase().includes("run") && history.length === 0;
+    const systemPrompt = isLite 
+      ? "You are a helpful AI assistant. Be concise."
+      : "You are an AI agent in the Hydra ecosystem. Respond naturally to the user or use tools if requested.";
+
+    const messages = [...history, { role: "user", content: prompt }];
+
+    let accumulatedText = "";
+    const result = await callAI({
+      model,
+      systemPrompt,
+      messages,
+      onToken: (token) => {
+        accumulatedText += token;
+        if (taskId && projectId) {
+          emitTaskEvent(projectId, {
+            taskId,
+            agentId: agent.id,
+            kind: "working",
+            label: agent.name,
+            message: accumulatedText // This will update the UI in real-time
+          });
+        }
+      },
+      onProgress: (info) => {
+        if (taskId && projectId && info.status === "progress") {
+          const progress = info.progress || 0;
+          const file = info.file || "weights";
+          emitTaskEvent(projectId, {
+            taskId,
+            agentId: agent.id,
+            kind: "progress",
+            label: agent.name,
+            message: `[Downloading ${file}: ${progress.toFixed(1)}%]`
+          });
+        }
+      }
+    });
+
+    return result.text;
+  }
+
   if (agent.platform === "gemini") {
     return sendGeminiPrompt(agent.id, prompt, timeoutMs);
   }
@@ -429,11 +547,33 @@ function matchAgentFromRequest(request, agents) {
   const byId = request.agentId?.trim();
   const byName = request.agent?.trim().toLowerCase();
 
-  return (
-    agents.find((agent) => byId && agent.id === byId) ||
-    agents.find((agent) => byName && agent.name.trim().toLowerCase() === byName) ||
-    null
-  );
+  if (!byId && !byName) {
+    return null;
+  }
+
+  const exactMatch = agents.find((agent) => {
+    if (byId && agent.id === byId) {
+      return true;
+    }
+    if (byName && agent.name.trim().toLowerCase() === byName) {
+      return true;
+    }
+    return false;
+  });
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  if (byName) {
+    const partialMatch = agents.find((agent) => {
+      const agentName = agent.name.trim().toLowerCase();
+      return agentName.includes(byName) || byName.includes(agentName);
+    });
+    return partialMatch || null;
+  }
+
+  return null;
 }
 
 async function continueWithToolBridge({
@@ -553,8 +693,15 @@ async function continueWithToolBridge({
     };
   }
 
+  const history = [];
+  let currentPrompt = nextPrompt;
+
   while (true) {
-    latestResponse = await sendPromptAndWait(executionAgent, nextPrompt);
+    latestResponse = await sendPromptAndWait(executionAgent, currentPrompt, 240000, taskId, projectId, history);
+    
+    // Add current turn to history
+    history.push({ role: "user", content: currentPrompt });
+    history.push({ role: "assistant", content: latestResponse });
 
     const request = parseToolRequest(latestResponse);
 
@@ -608,7 +755,7 @@ async function continueWithToolBridge({
       console.warn(
         `[Hydra bridge] ${agent.name} via ${executionAgent.name} repeated ${request.action}. Reusing cached result instead of executing again.`
       );
-      nextPrompt = formatRepeatedToolResultPrompt(
+      currentPrompt = formatRepeatedToolResultPrompt(
         request,
         cachedResultsBySignature.get(requestSignature),
         repeatedRequestCount
@@ -649,7 +796,7 @@ async function continueWithToolBridge({
           label: "Hydra",
           message: `Direct ${request.action} blocked. ${availableWorkers[0].name} or another worker must be assigned first.`
         });
-        nextPrompt = formatDelegationRequiredPrompt(request, availableWorkers);
+        currentPrompt = formatDelegationRequiredPrompt(request, availableWorkers);
         continue;
       }
 
@@ -713,7 +860,7 @@ async function continueWithToolBridge({
       });
     }
 
-    nextPrompt = followUpPrompt;
+    currentPrompt = followUpPrompt;
   }
 }
 
@@ -814,6 +961,45 @@ async function executeAgentTask({
       await updateAgentStatus(activeExecutionAgent.id, "working");
     }
 
+    const isAgentConnected = await checkAgentBridgeConnection(activeExecutionAgent.id, activeExecutionAgent.platform);
+    if (!isAgentConnected) {
+      console.info(`[Hydra] Agent ${activeExecutionAgent.name} appears offline before task execution. Attempting to wake up...`);
+      emitTaskEvent(projectId, {
+        taskId: taskRecord.id,
+        agentId: agent.id,
+        kind: "system",
+        label: "Hydra",
+        message: `${activeExecutionAgent.name} appears offline. Attempting to wake up...`
+      });
+      const wokeUp = await wakeUpAgent(activeExecutionAgent);
+      if (!wokeUp) {
+        markAgentTemporarilyUnavailable(activeExecutionAgent.id, "Agent was offline and wake-up failed.");
+        const fallbackAgent = await pickFallbackExecutionAgent({
+          logicalAgent: agent,
+          executionAgent: activeExecutionAgent,
+          attemptedIds: new Set([...attemptedIds, activeExecutionAgent.id])
+        });
+        if (fallbackAgent) {
+          emitTaskEvent(projectId, {
+            taskId: taskRecord.id,
+            agentId: agent.id,
+            kind: "system",
+            label: "Hydra",
+            message: `${activeExecutionAgent.name} failed to reconnect. Switching to ${fallbackAgent.name}.`
+          });
+          return runWithExecutionAgent(fallbackAgent, new Set([...attemptedIds, activeExecutionAgent.id]));
+        }
+        throw new Error(`${activeExecutionAgent.name} is offline and could not be woken up. No fallback available.`);
+      }
+      emitTaskEvent(projectId, {
+        taskId: taskRecord.id,
+        agentId: agent.id,
+        kind: "system",
+        label: "Hydra",
+        message: `${activeExecutionAgent.name} is now connected!`
+      });
+    }
+
     try {
       await openAgentSession(activeExecutionAgent.id, activeExecutionAgent.platform);
 
@@ -847,8 +1033,6 @@ async function executeAgentTask({
           activeExecutionAgent.id,
           temporaryUnavailableMessage
         );
-
-        await updateAgentStatus(activeExecutionAgent.id, "error");
 
         const fallbackAgent = await pickFallbackExecutionAgent({
           logicalAgent: agent,

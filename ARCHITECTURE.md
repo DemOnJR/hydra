@@ -62,13 +62,15 @@ src/renderer/
     `-- useTaskManager.js
 ```
 
-### 3. Playwright manager
+### 3. Browser manager (Playwright + CDP)
 
 Modelul curent:
-- un browser real lansat de Playwright
-- contexte izolate per agent
-- storage state salvat pe disk
-- fiecare agent poate fi adus in fata si controlat automat
+- browser real Chrome/Edge/Chromium lansat ca proces separat (`spawn`)
+- conexiune prin CDP (Chrome DevTools Protocol) pentru control
+- profile directories izolate per agent pe disk (stochează login, cookies)
+- fiecare agent are fereastra lui reală de browser controlată automat
+- bypass mai bun pentru Cloudflare Turnstile și captchas prin folosirea browserului sistemului
+- agenții "Blocked" pot fi deblocați manual prin "Check session" dacă sunt logați.
 
 ## Fluxuri
 

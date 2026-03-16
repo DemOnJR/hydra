@@ -14,7 +14,13 @@ export const MODEL_CATALOG = {
     "claude-sonnet-4-5-20250929",
     "claude-opus-4-1-20250805"
   ],
-  google: ["gemini-2.5-pro", "gemini-2.5-flash"]
+  google: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  ollama: ["qwen3.5:0.8b", "qwen2.5:0.5b", "qwen2.5:7b", "llama3.2", "mistral"],
+  local: [
+    "onnx-community/Qwen3.5-0.8B-ONNX",
+    "onnx-community/Qwen2.5-0.5B-Instruct",
+    "Xenova/llama-3.2-1B-Instruct"
+  ]
 };
 
 export const PROVIDER_CAPABILITIES = {
@@ -27,6 +33,14 @@ export const PROVIDER_CAPABILITIES = {
   google: {
     supportsCalls: false,
     note: "Gemini caller is not implemented yet."
+  },
+  ollama: {
+    supportsCalls: true,
+    note: "Requires local Ollama instance."
+  },
+  local: {
+    supportsCalls: true,
+    note: "Runs directly in Hydra (Transformers.js)."
   }
 };
 
@@ -36,6 +50,10 @@ export function isAiRole(value) {
 
 export function getProviderForModel(model = "") {
   const normalized = model.trim().toLowerCase();
+
+  if (normalized.startsWith("local/")) {
+    return "local";
+  }
 
   if (
     normalized.startsWith("gpt") ||
@@ -52,6 +70,10 @@ export function getProviderForModel(model = "") {
 
   if (normalized.startsWith("gemini")) {
     return "google";
+  }
+
+  if (normalized.includes(":") || normalized.startsWith("llama") || normalized.startsWith("qwen") || normalized.startsWith("mistral")) {
+    return "ollama";
   }
 
   throw new Error(`Unknown model provider for "${model}".`);

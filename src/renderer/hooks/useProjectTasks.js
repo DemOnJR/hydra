@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import * as React from "react";
 import { request } from "../api.js";
 
 export function useProjectTasks(serverUrl, activeProjectId) {
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks] = React.useState([]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     let cancelled = false;
     let intervalId = null;
 

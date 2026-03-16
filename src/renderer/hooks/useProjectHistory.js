@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import * as React from "react";
 import { request } from "../api.js";
 
 const EMPTY_HISTORY = {
@@ -15,10 +15,10 @@ const EMPTY_HISTORY = {
 };
 
 export function useProjectHistory(serverUrl, activeProjectId) {
-  const [history, setHistory] = useState(EMPTY_HISTORY);
-  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = React.useState(EMPTY_HISTORY);
+  const [loading, setLoading] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     let cancelled = false;
     let intervalId = null;
 

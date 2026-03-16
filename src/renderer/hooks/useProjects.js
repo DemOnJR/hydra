@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import * as React from "react";
 import { request } from "../api.js";
 
 export function useProjects(serverUrl) {
-  const [projects, setProjects] = useState([]);
-  const [activeProjectId, setActiveProjectId] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [projects, setProjects] = React.useState([]);
+  const [activeProjectId, setActiveProjectId] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
 
   async function refreshProjects() {
     if (!serverUrl) {
@@ -27,7 +27,7 @@ export function useProjects(serverUrl) {
     }
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     refreshProjects();
   }, [serverUrl]);
 

@@ -30,7 +30,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [START] Launching Hydra...
+echo [START] Launching Hydra (Autofill fix applied)...
 call npm run dev
 
 if errorlevel 1 (

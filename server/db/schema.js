@@ -61,13 +61,14 @@ export function initDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       platform TEXT NOT NULL
-        CHECK (platform IN ('chatgpt', 'gemini', 'claude', 'other')),
+        CHECK (platform IN ('chatgpt', 'gemini', 'claude', 'ollama', 'local', 'other')),
       role TEXT NOT NULL DEFAULT 'worker'
         CHECK (role IN ('orchestrator', 'worker')),
       specialty TEXT DEFAULT '',
       partition TEXT NOT NULL UNIQUE,
       status TEXT DEFAULT 'idle'
-        CHECK (status IN ('idle', 'working', 'done', 'error')),
+        CHECK (status IN ('idle', 'working', 'done', 'error', 'sleeping')),
+      session_dir TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -81,7 +82,16 @@ export function initDb() {
       status TEXT DEFAULT 'pending'
         CHECK (status IN ('pending', 'sent', 'working', 'complete', 'error')),
       created_at TEXT DEFAULT (datetime('now')),
-      completed_at TEXT
+      completed_at TEXT,
+      scheduled_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS task_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      prompt_template TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS ai_settings (
@@ -270,6 +280,60 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_conversation_turns_channel_created_at
     ON conversation_turns(project_id, channel, created_at DESC);
   `);
+
+  database.exec(`
+    UPDATE agents
+    SET status = 'idle'
+    WHERE status = 'error'
+  `);
+
+  database.exec(`
+    UPDATE tasks
+    SET status = 'error'
+    WHERE status IN ('pending', 'sent', 'working')
+  `);
+
+  // Migration: Update 'platform' and 'status' CHECK constraints in agents table
+  const agentsSql = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='agents'").get();
+  
+  if (agentsSql && (!agentsSql.sql.includes("'local'") || !agentsSql.sql.includes("'sleeping'"))) {
+    console.info("[DB] Migrating agents table to support new platforms and statuses...");
+    database.transaction(() => {
+      // 1. Create a temporary table with the new schema
+      database.exec(`
+        CREATE TABLE agents_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          platform TEXT NOT NULL
+            CHECK (platform IN ('chatgpt', 'gemini', 'claude', 'ollama', 'local', 'other')),
+          role TEXT NOT NULL DEFAULT 'worker'
+            CHECK (role IN ('orchestrator', 'worker')),
+          specialty TEXT DEFAULT '',
+          partition TEXT NOT NULL UNIQUE,
+          status TEXT DEFAULT 'idle'
+            CHECK (status IN ('idle', 'working', 'done', 'error', 'sleeping')),
+          session_dir TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now'))
+        )
+      `);
+
+      // 2. Copy data from the old table
+      database.exec("INSERT INTO agents_new SELECT * FROM agents");
+
+      // 3. Drop the old table
+      database.exec("DROP TABLE agents");
+
+      // 4. Rename the new table
+      database.exec("ALTER TABLE agents_new RENAME TO agents");
+
+      // 5. Recreate indexes
+      database.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_session_dir
+        ON agents(session_dir);
+      `);
+    })();
+    console.info("[DB] Migration complete.");
+  }
 
   return database;
 }

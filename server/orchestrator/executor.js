@@ -131,6 +131,7 @@ export async function getGitStatus(projectRoot) {
 
     if (!isRepo) {
       return {
+        ok: true,
         branch: "(not a git repository)",
         recentCommits: [],
         changedFiles: []
@@ -142,6 +143,7 @@ export async function getGitStatus(projectRoot) {
     const status = await git.status();
 
     return {
+      ok: true,
       branch,
       recentCommits: log.all.map((commit) => ({
         hash: commit.hash.substring(0, 7),
@@ -157,6 +159,7 @@ export async function getGitStatus(projectRoot) {
     };
   } catch (error) {
     return {
+      ok: false,
       branch: "(git unavailable)",
       recentCommits: [],
       changedFiles: [`git error: ${error.message}`]
@@ -171,12 +174,59 @@ export async function getGitDiff(projectRoot, baseBranch = "main") {
     const isRepo = await git.checkIsRepo();
 
     if (!isRepo) {
-      return "(not a git repository)";
+      return {
+        ok: true,
+        diff: "(not a git repository)"
+      };
     }
 
     const diff = await git.diff([baseBranch]);
-    return diff || "(no diff)";
+    return {
+      ok: true,
+      diff: diff || "(no diff)"
+    };
   } catch (error) {
-    return `git diff unavailable: ${error.message}`;
+    return {
+      ok: false,
+      error: `git diff unavailable: ${error.message}`
+    };
   }
+}
+
+export function writeFile(projectRoot, filePath, content) {
+  const absolutePath = resolveProjectPath(projectRoot, filePath);
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  fs.writeFileSync(absolutePath, content, "utf8");
+  return {
+    ok: true,
+    filename: filePath,
+    added: content.split("\n").length,
+    removed: 0
+  };
+}
+
+export function replaceText(projectRoot, filePath, oldString, newString) {
+  const absolutePath = resolveProjectPath(projectRoot, filePath);
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  const content = fs.readFileSync(absolutePath, "utf8");
+  if (!content.includes(oldString)) {
+    throw new Error(`Old string not found in file: ${filePath}`);
+  }
+
+  const newContent = content.replace(oldString, newString);
+  fs.writeFileSync(absolutePath, newContent, "utf8");
+
+  const addedLines = newString.split("\n").length;
+  const removedLines = oldString.split("\n").length;
+
+  return {
+    ok: true,
+    filename: filePath,
+    added: addedLines,
+    removed: removedLines,
+    diff: `--- ${filePath}\n+++ ${filePath}\n- ${oldString.split("\n").join("\n- ")}\n+ ${newString.split("\n").join("\n+ ")}`
+  };
 }

@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { getProviderForModel } from "./modelConfig.js";
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { callLocal } from "./localRunner.js";
 
 function ensureApiKey(envVarName) {
   if (!process.env[envVarName]?.trim()) {
@@ -225,12 +228,156 @@ async function callClaude({ model, systemPrompt, messages, tools, responseFormat
   };
 }
 
+async function ensureOllamaRunning() {
+  const baseURL = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1";
+  const healthURL = baseURL.replace(/\/v1$/, "/api/tags");
+
+  try {
+    const response = await fetch(healthURL);
+    if (response.ok) return true;
+  } catch (e) {
+    // Not running
+  }
+
+  console.info("[Ollama] Attempting to auto-start Ollama...");
+  
+  const possiblePaths = [
+    path.join(process.env.LOCALAPPDATA, "Programs", "Ollama", "ollama app.exe"),
+    "ollama"
+  ];
+
+  let started = false;
+  for (const p of possiblePaths) {
+    try {
+      const child = spawn(p, ["serve"], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true
+      });
+      child.unref();
+      started = true;
+      break;
+    } catch (e) {
+      continue;
+    }
+  }
+
+  if (started) {
+    // Wait for it to wake up
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const response = await fetch(healthURL);
+        if (response.ok) {
+          console.info("[Ollama] Ollama started successfully.");
+          return true;
+        }
+      } catch (e) {}
+    }
+  }
+
+  return false;
+}
+
+async function callOllama({ model, systemPrompt, messages, tools, responseFormat, onToken }) {
+  await ensureOllamaRunning();
+  const baseURL = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1";
+  
+  const client = new OpenAI({
+    baseURL,
+    apiKey: "ollama" // Required by SDK but ignored by Ollama
+  });
+
+  const params = {
+    model,
+    messages: normalizeOpenAiMessages(messages, systemPrompt, responseFormat),
+    stream: typeof onToken === "function"
+  };
+
+  if (tools.length > 0) {
+    params.tools = formatOpenAiTools(tools);
+    params.tool_choice = "auto";
+  }
+
+  if (responseFormat === "json") {
+    params.response_format = { type: "json_object" };
+  }
+
+  if (params.stream) {
+    const stream = await client.chat.completions.create(params);
+    let fullText = "";
+    const toolCalls = [];
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      if (delta?.content) {
+        fullText += delta.content;
+        onToken(delta.content);
+      }
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (!toolCalls[tc.index]) {
+            toolCalls[tc.index] = { id: tc.id, name: tc.function.name, params: "" };
+          }
+          if (tc.function.arguments) {
+            toolCalls[tc.index].params += tc.function.arguments;
+          }
+        }
+      }
+    }
+
+    return {
+      provider: "ollama",
+      text: fullText,
+      toolCalls: toolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.name,
+        params: safeParseJson(tc.params)
+      })),
+      assistantMessage: {
+        role: "assistant",
+        content: fullText,
+        tool_calls: toolCalls.length > 0 ? toolCalls.map(tc => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.params }
+        })) : undefined
+      },
+      usage: null,
+      finishReason: "stop"
+    };
+  }
+
+  const response = await client.chat.completions.create(params);
+  const choice = response.choices[0];
+
+  return {
+    provider: "ollama",
+    text: normalizeTextContent(choice?.message?.content),
+    toolCalls:
+      choice?.message?.tool_calls?.map((toolCall) => ({
+        id: toolCall.id,
+        name: toolCall.function.name,
+        params: safeParseJson(toolCall.function.arguments)
+      })) ?? [],
+    assistantMessage: {
+      role: "assistant",
+      content: choice?.message?.content ?? "",
+      tool_calls: choice?.message?.tool_calls ?? []
+    },
+    usage: response.usage ?? null,
+    finishReason: choice?.finish_reason ?? null
+  };
+}
+
 export async function callAI({
   model,
   systemPrompt = "",
   messages = [],
   tools = [],
-  responseFormat = "text"
+  responseFormat = "text",
+  onToken = null,
+  onProgress = null
 }) {
   if (!model?.trim()) {
     throw new Error("AI model is required.");
@@ -256,6 +403,39 @@ export async function callAI({
       tools,
       responseFormat
     });
+  }
+
+  if (provider === "ollama") {
+    return callOllama({
+      model,
+      systemPrompt,
+      messages,
+      tools,
+      responseFormat,
+      onToken
+    });
+  }
+
+  if (provider === "local") {
+    const result = await callLocal({
+      model,
+      systemPrompt,
+      messages,
+      onToken,
+      onProgress
+    });
+
+    return {
+      provider: "local",
+      text: result.text,
+      toolCalls: [], // Transformers.js tool calling needs more work, skipping for now
+      assistantMessage: {
+        role: "assistant",
+        content: result.text
+      },
+      usage: result.usage,
+      finishReason: result.finishReason
+    };
   }
 
   if (provider === "google") {

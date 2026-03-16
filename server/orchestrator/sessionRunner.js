@@ -16,7 +16,15 @@ import {
 } from "../db/queries.js";
 import { buildOrchestratorPrompt } from "../prompts/orchestrator.js";
 import { buildOrchestratorContext } from "./contextBuilder.js";
-import { getGitDiff, getGitStatus, listFiles, readFile, runCommand } from "./executor.js";
+import {
+  getGitDiff,
+  getGitStatus,
+  listFiles,
+  readFile,
+  replaceText,
+  runCommand,
+  writeFile
+} from "./executor.js";
 
 const activeProjectSessions = new Map();
 const activeSessionRuns = new Map();
@@ -40,6 +48,23 @@ const ORCHESTRATOR_TOOLS = [
         type: "string",
         description: "Relative file path."
       }
+    }
+  },
+  {
+    name: "write_file",
+    description: "Write a file to the project root.",
+    parameters: {
+      path: { type: "string", description: "Relative file path." },
+      content: { type: "string", description: "The content to write." }
+    }
+  },
+  {
+    name: "replace",
+    description: "Replace text in a file.",
+    parameters: {
+      path: { type: "string", description: "Relative file path." },
+      oldString: { type: "string", description: "The literal string to find." },
+      newString: { type: "string", description: "The literal string to replace it with." }
     }
   },
   {
@@ -159,11 +184,20 @@ async function executeToolCall(toolCall, runtime) {
         output: readFile(projectRoot, params.path)
       };
 
-    case "run_command":
+    case "write_file":
+      return writeFile(projectRoot, params.path, params.content);
+
+    case "replace":
+      return replaceText(projectRoot, params.path, params.oldString, params.newString);
+
+    case "run_command": {
+      const result = await runCommand(params.cmd, projectRoot, { timeout: 120000 });
       return {
-        ok: true,
-        ...(await runCommand(params.cmd, projectRoot, { timeout: 120000 }))
+        ok: result.success,
+        ...result,
+        command: params.cmd
       };
+    }
 
     case "git_status":
       return {
@@ -289,17 +323,29 @@ async function runSession(sessionId) {
       current_cycle: cycle
     });
 
-    logSession(sessionId, `Cycle ${cycle}/${session.max_cycles}`, "info");
+    logSession(sessionId, `Thinking (cycle ${cycle}/${session.max_cycles})...`, "info");
+
+    let accumulatedText = "";
+    let lastLogTime = 0;
 
     const response = await callAI({
       model: session.orchestrator_model,
       systemPrompt: prompt,
       messages,
-      tools: ORCHESTRATOR_TOOLS
+      tools: ORCHESTRATOR_TOOLS,
+      onToken: (token) => {
+        accumulatedText += token;
+        const now = Date.now();
+        // Update summary in DB occasionally for real-time feel, but throttle it
+        if (now - lastLogTime > 1500) {
+          updateSession(sessionId, { summary: accumulatedText + "..." });
+          lastLogTime = now;
+        }
+      }
     });
 
     if (response.text) {
-      logSession(sessionId, `Assistant: ${response.text.slice(0, 500)}`, "info");
+      logSession(sessionId, `Assistant: ${response.text}`, "info");
     }
 
     messages.push(response.assistantMessage);
@@ -320,11 +366,28 @@ async function runSession(sessionId) {
 
     for (const toolCall of response.toolCalls) {
       try {
+        logSession(sessionId, `Executing ${toolCall.name}...`, "info", { tool: toolCall.name });
         const result = await executeToolCall(toolCall, runtime);
         toolResults.push({ toolCall, result });
-        logSession(sessionId, `Tool ${toolCall.name} executed.`, "info", {
-          tool: toolCall.name
-        });
+        
+        // Log detailed tool result for UI
+        if (toolCall.name === "write_file" || toolCall.name === "replace") {
+          const detail = `Edited ${result.filename} +${result.added} -${result.removed}`;
+          logSession(sessionId, detail, "info", { 
+            kind: "file_edit", 
+            filename: result.filename, 
+            added: result.added, 
+            removed: result.removed,
+            diff: result.diff 
+          });
+        } else if (toolCall.name === "run_command") {
+          logSession(sessionId, `Ran command: ${result.command}`, "info", {
+            kind: "command",
+            command: result.command,
+            stdout: result.stdout,
+            stderr: result.stderr
+          });
+        }
 
         if (toolCall.name === "request_approval") {
           approvalRequested = true;

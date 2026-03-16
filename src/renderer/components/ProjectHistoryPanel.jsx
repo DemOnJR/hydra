@@ -1,4 +1,4 @@
-import { useState } from "react";
+import * as React from "react";
 
 function trimBlock(value) {
   return String(value ?? "").trim();
@@ -11,41 +11,44 @@ function firstLine(value) {
 }
 
 function SessionCard({ session }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = React.useState(false);
   return (
-    <article className="history-session-card">
+    <article className="bg-zinc-800/50 border border-white/5 rounded-lg p-3 flex flex-col gap-2 transition-colors hover:bg-zinc-800/80 group">
       <header
-        className="history-session-header"
-        style={{ cursor: "pointer" }}
+        className="flex items-center justify-between gap-3 cursor-pointer"
         onClick={() => setOpen((v) => !v)}
       >
-        <div>
-          <strong>{session.agent_name}</strong>
-          <div className="agent-meta">
-            {session.agent_role} | {session.platform}
-            {session.specialty ? ` | ${session.specialty}` : ""}
+        <div className="min-w-0">
+          <strong className="text-sm text-zinc-100 group-hover:text-indigo-400 transition-colors">{session.agent_name}</strong>
+          <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-tight">
+            {session.agent_role} · {session.platform}
+            {session.specialty ? ` · ${session.specialty}` : ""}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="pill">{session.status}</span>
-          <span style={{ fontSize: 11, opacity: 0.5 }}>{open ? "▲" : "▼"}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+            session.status === "done" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-zinc-800 text-zinc-400 border border-white/5"
+          }`}>{session.status}</span>
+          <span className="text-[10px] text-zinc-600 font-bold w-4 text-center">{open ? "▲" : "▼"}</span>
         </div>
       </header>
       {open && (
-        <>
-          <div className="history-session-block">
-            <span className="eyebrow">Asked</span>
-            <p>{session.user_task}</p>
+        <div className="grid gap-3 mt-1 pt-3 border-t border-white/5 animate-in slide-in-from-top-1 duration-200">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Asked</span>
+            <p className="text-xs text-zinc-300 leading-relaxed italic border-l-2 border-indigo-500/30 pl-3 py-0.5">{session.user_task}</p>
           </div>
-          <div className="history-session-block">
-            <span className="eyebrow">Result</span>
-            <p>{trimBlock(session.response) || "No response saved yet."}</p>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Result</span>
+            <div className="text-xs text-zinc-400 font-mono whitespace-pre-wrap leading-relaxed bg-zinc-950/50 p-3 rounded-md border border-white/5">
+              {trimBlock(session.response) || "No response saved yet."}
+            </div>
           </div>
-        </>
+        </div>
       )}
       {!open && (
-        <div style={{ padding: "4px 0 2px", fontSize: 12, opacity: 0.65, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {session.user_task?.slice(0, 100) || "—"}
+        <div className="text-xs text-zinc-500 truncate italic pl-1 border-l border-white/10 mt-0.5">
+          {session.user_task || "—"}
         </div>
       )}
     </article>
@@ -60,15 +63,15 @@ const MEMORY_FIELDS = [
 ];
 
 export function ProjectHistoryPanel({ activeProject, history, loading }) {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = React.useState("overview");
 
   if (!activeProject?.id) {
     return (
-      <section className="panel history-panel">
-        <div className="panel-header">
-          <h2>Project Memory</h2>
+      <section className="bg-zinc-900/50 border border-white/5 rounded-xl p-4 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h2 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Memory</h2>
         </div>
-        <p className="empty-state">Select a project to load orchestrator history.</p>
+        <p className="text-zinc-500 text-xs py-8 text-center italic">Select a project to load orchestrator history.</p>
       </section>
     );
   }
@@ -80,77 +83,50 @@ export function ProjectHistoryPanel({ activeProject, history, loading }) {
   const activeFields = MEMORY_FIELDS.filter((f) => trimBlock(history.memory[f.key]));
 
   return (
-    <section className="panel history-panel">
-      <div className="panel-header">
-        <h2>Project Memory</h2>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {loading && <span className="pill working">Refreshing</span>}
-          {updatedAt && <span style={{ fontSize: 11, opacity: 0.45 }}>{updatedAt}</span>}
+    <section className="bg-zinc-900/50 border border-white/5 rounded-xl p-4 flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Memory</h2>
+        <div className="flex items-center gap-3">
+          {loading && <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[10px] font-bold uppercase tracking-wider border border-indigo-500/20 animate-pulse">Refreshing</span>}
+          {updatedAt && <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-tighter tabular-nums">Last updated: {updatedAt}</span>}
         </div>
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: "flex", gap: 4, padding: "0 0 10px 0", borderBottom: "1px solid var(--border)" }}>
+      <div className="flex gap-1 p-1 bg-zinc-950/50 rounded-lg border border-white/5">
         {["overview", "details", "sessions"].map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            style={{
-              padding: "4px 12px",
-              borderRadius: 20,
-              border: "none",
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: tab === t ? 600 : 400,
-              background: tab === t ? "var(--accent, #6c63ff)" : "var(--surface2, rgba(255,255,255,0.07))",
-              color: tab === t ? "#fff" : "inherit",
-              opacity: tab === t ? 1 : 0.6,
-              transition: "all 0.15s",
-            }}
+            className={`flex-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-md transition-all ${
+              tab === t 
+                ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" 
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
           >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
+            {t}
           </button>
         ))}
       </div>
 
       {/* OVERVIEW TAB — compact pills */}
       {tab === "overview" && (
-        <div style={{ paddingTop: 12 }}>
+        <div className="flex flex-col gap-4 animate-in fade-in duration-300">
           {activeFields.length === 0 ? (
-            <p className="empty-state">Start talking to the orchestrator and Hydra will build memory here.</p>
+            <p className="text-zinc-500 text-xs py-8 text-center italic">Start talking to the orchestrator and Hydra will build memory here.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="flex flex-col gap-3">
               {activeFields.map((f) => (
-                <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span className="eyebrow">{f.label}</span>
-                  <div style={{
-                    fontSize: 12,
-                    opacity: 0.8,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    padding: "5px 8px",
-                    background: "var(--surface2, rgba(255,255,255,0.05))",
-                    borderRadius: 6,
-                    borderLeft: "3px solid var(--accent, #6c63ff)",
-                  }}>
+                <div key={f.key} className="flex flex-col gap-1.5">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{f.label}</span>
+                  <div className="text-xs text-zinc-300 truncate bg-zinc-800/40 px-3 py-2 rounded-lg border-l-2 border-indigo-500/50 border-white/5 group-hover:bg-zinc-800/60 transition-colors">
                     {firstLine(history.memory[f.key])}
                   </div>
                 </div>
               ))}
               <button
                 onClick={() => setTab("details")}
-                style={{
-                  alignSelf: "flex-start",
-                  marginTop: 4,
-                  padding: "3px 10px",
-                  fontSize: 11,
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  background: "transparent",
-                  cursor: "pointer",
-                  opacity: 0.6,
-                }}
+                className="self-start mt-2 px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-white/5 rounded-full text-zinc-500 hover:text-indigo-400 hover:border-indigo-500/30 transition-all"
               >
                 View full memory →
               </button>
@@ -161,12 +137,12 @@ export function ProjectHistoryPanel({ activeProject, history, loading }) {
 
       {/* DETAILS TAB — full text */}
       {tab === "details" && (
-        <div style={{ paddingTop: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="flex flex-col gap-4 animate-in fade-in duration-300">
           {MEMORY_FIELDS.map((f) => (
-            <div key={f.key} className="history-card">
-              <span className="eyebrow">{f.label}</span>
-              <pre className="history-pre">
-                {trimBlock(history.memory[f.key]) || "—"}
+            <div key={f.key} className="bg-zinc-800/30 border border-white/5 rounded-lg p-3 flex flex-col gap-2">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{f.label}</span>
+              <pre className="text-[11px] text-zinc-400 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                {trimBlock(history.memory[f.key]) || <span className="italic text-zinc-700">Empty</span>}
               </pre>
             </div>
           ))}
@@ -175,15 +151,15 @@ export function ProjectHistoryPanel({ activeProject, history, loading }) {
 
       {/* SESSIONS TAB */}
       {tab === "sessions" && (
-        <div style={{ paddingTop: 12 }}>
-          <div className="action-row" style={{ marginBottom: 8 }}>
-            <span className="eyebrow">{history.sessions.length} saved sessions</span>
+        <div className="flex flex-col gap-3 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{history.sessions.length} saved sessions</span>
           </div>
           {history.sessions.length === 0 ? (
-            <p className="empty-state">No task sessions stored yet.</p>
+            <p className="text-zinc-500 text-xs py-8 text-center italic">No task sessions stored yet.</p>
           ) : (
-            <div className="history-session-list">
-              {history.sessions.slice(0, 8).map((session) => (
+            <div className="flex flex-col gap-2">
+              {history.sessions.slice(0, 10).map((session) => (
                 <SessionCard key={session.task_id} session={session} />
               ))}
             </div>
