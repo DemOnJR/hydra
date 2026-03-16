@@ -63,10 +63,10 @@ export function updateTaskStatus(taskId, status) {
   });
 }
 
-export function completeTask(taskId, response) {
+export function completeTask(taskId, response, aiMeta = null) {
   return request(`/api/tasks/${taskId}/complete`, {
     method: "PATCH",
-    body: JSON.stringify({ response })
+    body: JSON.stringify({ response, aiMeta })
   });
 }
 

@@ -1,3 +1,5 @@
+import { registerProvider } from "./registry.js";
+
 const STOP_SELECTOR = '[data-testid="stop-button"]';
 const ASSISTANT_SELECTOR = '[data-message-author-role="assistant"]';
 
@@ -168,3 +170,9 @@ export async function isLoggedIn(page) {
   const url = page.url();
   return Boolean(url) && !url.includes("/auth") && !url.includes("/login");
 }
+
+registerProvider("chatgpt", {
+  inject,
+  waitForResponse,
+  isLoggedIn
+});

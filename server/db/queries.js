@@ -618,7 +618,10 @@ export function completeTask(id, response) {
   getDb()
     .prepare(`
       UPDATE tasks
-      SET response = ?, status = 'complete', completed_at = datetime('now')
+      SET
+        response = ?,
+        status = 'complete',
+        completed_at = datetime('now')
       WHERE id = ?
     `)
     .run(response, id);
@@ -644,6 +647,141 @@ export function completeTask(id, response) {
   }
 
   return task;
+}
+
+export function completeTaskWithMeta(id, response, meta = {}) {
+  const model = typeof meta.model === "string" ? meta.model.trim() : "";
+  const provider = typeof meta.provider === "string" ? meta.provider.trim() : "";
+  const promptTokens = Number.isFinite(meta.promptTokens) ? meta.promptTokens : null;
+  const completionTokens = Number.isFinite(meta.completionTokens) ? meta.completionTokens : null;
+  const totalTokens = Number.isFinite(meta.totalTokens) ? meta.totalTokens : null;
+  const costUsd = Number.isFinite(meta.costUsd) ? meta.costUsd : null;
+
+  getDb()
+    .prepare(
+      `
+        UPDATE tasks
+        SET
+          response = ?,
+          status = 'complete',
+          completed_at = datetime('now'),
+          model = ?,
+          provider = ?,
+          prompt_tokens = ?,
+          completion_tokens = ?,
+          total_tokens = ?,
+          cost_usd = ?
+        WHERE id = ?
+      `
+    )
+    .run(
+      response,
+      model,
+      provider,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      costUsd,
+      id
+    );
+
+  const task = getTaskById(id);
+
+  if (task?.project_id) {
+    const agent = getAgentById(task.agent_id);
+    createConversationTurn({
+      projectId: task.project_id,
+      taskId: id,
+      agentId: task.agent_id,
+      channel: getConversationChannelForRole(agent?.role),
+      speaker: "assistant",
+      content: response,
+      metadata: {
+        agentName: agent?.name || "",
+        agentRole: agent?.role || "worker",
+        status: "complete",
+        model,
+        provider,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        costUsd
+      }
+    });
+    refreshProjectCompaction(task.project_id);
+  }
+
+  return task;
+}
+
+export function createNotification({
+  projectId,
+  kind = "info",
+  title = "",
+  message,
+  metadata = null
+}) {
+  if (!projectId?.trim()) {
+    throw new Error("projectId is required.");
+  }
+
+  const text = String(message ?? "").trim();
+  if (!text) {
+    throw new Error("notification message is required.");
+  }
+
+  const id = uuidv4();
+  const payload = metadata ? JSON.stringify(metadata) : "";
+
+  getDb()
+    .prepare(
+      `
+        INSERT INTO notifications (id, project_id, kind, title, message, metadata)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `
+    )
+    .run(id, projectId, String(kind || "info"), String(title || ""), text, payload);
+
+  return getNotificationById(id);
+}
+
+export function getNotificationById(id) {
+  return getDb().prepare("SELECT * FROM notifications WHERE id = ?").get(id);
+}
+
+export function listNotifications(projectId, limit = 50) {
+  const parsedLimit = Number.parseInt(String(limit ?? "50"), 10);
+  const safeLimit = Number.isNaN(parsedLimit) ? 50 : Math.min(Math.max(parsedLimit, 1), 200);
+
+  if (!projectId?.trim()) {
+    return [];
+  }
+
+  return getDb()
+    .prepare(
+      `
+        SELECT *
+        FROM notifications
+        WHERE project_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `
+    )
+    .all(projectId, safeLimit);
+}
+
+export function markNotificationRead(id) {
+  getDb()
+    .prepare(
+      `
+        UPDATE notifications
+        SET read_at = COALESCE(read_at, datetime('now'))
+        WHERE id = ?
+      `
+    )
+    .run(id);
+
+  return getNotificationById(id);
 }
 
 export function getRecentTasks(projectId, limit = 50) {

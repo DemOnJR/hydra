@@ -1,3 +1,5 @@
+import { registerProvider } from "./registry.js";
+
 const EDITOR_SELECTORS = [
   'rich-textarea div[contenteditable="true"]',
   'div[contenteditable="true"].ql-editor',
@@ -100,3 +102,9 @@ export async function isLoggedIn(page) {
   const url = page.url();
   return Boolean(url) && !url.includes("/signin") && !url.includes("/auth");
 }
+
+registerProvider("gemini", {
+  inject,
+  waitForResponse,
+  isLoggedIn
+});

@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   clearProjectTasks,
   completeTask,
+  completeTaskWithMeta,
   createTask,
   getRecentTasks,
   updateTaskStatus
@@ -41,7 +42,12 @@ router.patch("/:id/status", (req, res) => {
 });
 
 router.patch("/:id/complete", (req, res) => {
-  const { response = "" } = req.body ?? {};
+  const { response = "", aiMeta = null } = req.body ?? {};
+  if (aiMeta && typeof aiMeta === "object") {
+    res.json(completeTaskWithMeta(req.params.id, response, aiMeta));
+    return;
+  }
+
   res.json(completeTask(req.params.id, response));
 });
 
@@ -58,4 +64,3 @@ router.delete("/", (req, res) => {
 });
 
 export default router;
-

@@ -4,6 +4,7 @@ import { registerIpcHandlers } from "./ipcHandlers.js";
 import { shutdown as shutdownPlaywright } from "./playwrightManager.js";
 import { startContextServer, stopContextServer } from "./serverProcess.js";
 import { createMainWindow } from "./windowManager.js";
+import { discoverTools } from "./toolRegistry.js";
 
 let mainWindow;
 let isQuitting = false;

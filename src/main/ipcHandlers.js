@@ -65,6 +65,7 @@ const CACHE_INVALIDATING_TOOL_ACTIONS = new Set([
 const agentExecutionQueues = new Map();
 let restartScheduled = false;
 const temporarilyUnavailableAgents = new Map();
+const taskAiMetaByTaskId = new Map();
 const ORCHESTRATOR_WORKER_ONLY_ACTIONS = new Set([
   "apply_patch",
   "write_file"
@@ -104,6 +105,59 @@ function emitTaskEvent(projectId, payload) {
       window.webContents.send("agent-sync:task-event", event);
     }
   }
+}
+
+function normalizeTaskAiMeta(snapshot = {}) {
+  const promptTokens = Number.isFinite(snapshot.promptTokens) ? snapshot.promptTokens : null;
+  const completionTokens = Number.isFinite(snapshot.completionTokens)
+    ? snapshot.completionTokens
+    : null;
+  const totalTokens = Number.isFinite(snapshot.totalTokens)
+    ? snapshot.totalTokens
+    : promptTokens != null && completionTokens != null
+      ? promptTokens + completionTokens
+      : null;
+  const costUsd = Number.isFinite(snapshot.costUsd) ? snapshot.costUsd : null;
+
+  return {
+    provider: typeof snapshot.provider === "string" ? snapshot.provider : "",
+    model: typeof snapshot.model === "string" ? snapshot.model : "",
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    costUsd
+  };
+}
+
+function recordTaskAiMeta(taskId, patch = {}) {
+  if (!taskId) {
+    return;
+  }
+
+  const current = taskAiMetaByTaskId.get(taskId) || {
+    provider: "",
+    model: "",
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    costUsd: 0
+  };
+
+  const next = {
+    ...current,
+    provider: patch.provider || current.provider,
+    model: patch.model || current.model,
+    promptTokens:
+      current.promptTokens + (Number.isFinite(patch.promptTokens) ? patch.promptTokens : 0),
+    completionTokens:
+      current.completionTokens +
+      (Number.isFinite(patch.completionTokens) ? patch.completionTokens : 0),
+    totalTokens:
+      current.totalTokens + (Number.isFinite(patch.totalTokens) ? patch.totalTokens : 0),
+    costUsd: current.costUsd + (Number.isFinite(patch.costUsd) ? patch.costUsd : 0)
+  };
+
+  taskAiMetaByTaskId.set(taskId, next);
 }
 
 function truncateText(value, maxLength = 8000) {
@@ -488,6 +542,17 @@ async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = nul
         }
       }
     });
+
+    if (result?.usageNormalized) {
+      recordTaskAiMeta(taskId, {
+        provider: result.provider,
+        model,
+        promptTokens: result.usageNormalized.promptTokens ?? 0,
+        completionTokens: result.usageNormalized.completionTokens ?? 0,
+        totalTokens: result.usageNormalized.totalTokens ?? 0,
+        costUsd: result.costUsd ?? 0
+      });
+    }
 
     return result.text;
   }
@@ -1080,7 +1145,9 @@ async function executeAgentTask({
     const { bridgeResult, executionAgent: finalExecutionAgent } =
       await runWithExecutionAgent(executionAgent);
 
-    await completeTask(taskRecord.id, bridgeResult.response);
+    const aiMeta = taskAiMetaByTaskId.get(taskRecord.id) || null;
+    taskAiMetaByTaskId.delete(taskRecord.id);
+    await completeTask(taskRecord.id, bridgeResult.response, aiMeta ? normalizeTaskAiMeta(aiMeta) : null);
 
     if (!getAgentTemporaryUnavailability(agent.id)) {
       await updateAgentStatus(agent.id, "done");
@@ -1139,6 +1206,7 @@ async function executeAgentTask({
       journalPath: executionContext.journalPath
     };
   } catch (error) {
+    taskAiMetaByTaskId.delete(taskRecord.id);
     await updateTaskStatus(taskRecord.id, "error");
     await updateAgentStatus(agent.id, "error");
 
@@ -1177,6 +1245,7 @@ export function runAgentTask(input) {
 
 export function registerIpcHandlers() {
   ipcMain.removeHandler("agent-sync:get-config");
+  ipcMain.removeHandler("agent-sync:get-agent-journal");
   ipcMain.removeHandler("agent-sync:open-agent");
   ipcMain.removeHandler("agent-sync:inspect-agent");
   ipcMain.removeHandler("agent-sync:send-task-to-agent");
@@ -1186,6 +1255,32 @@ export function registerIpcHandlers() {
   ipcMain.handle("agent-sync:get-config", async () => ({
     serverUrl: getServerBaseUrl()
   }));
+
+  ipcMain.handle("agent-sync:get-agent-journal", async (_event, payload) => {
+    const projectRoot = String(payload?.projectRoot ?? "").trim();
+    const agent = payload?.agent ?? {};
+    const agentId = String(agent.id ?? payload?.agentId ?? "").trim();
+
+    if (!projectRoot) {
+      throw new Error("projectRoot is required.");
+    }
+
+    if (!agentId) {
+      throw new Error("agent.id is required.");
+    }
+
+    const normalizedAgent = {
+      id: agentId,
+      name: String(agent.name ?? "").trim() || agentId,
+      session_dir: String(agent.session_dir ?? agent.sessionDir ?? "").trim()
+    };
+
+    return {
+      ok: true,
+      journalPath: getAgentJournalPath(projectRoot, normalizedAgent),
+      content: readAgentJournal(projectRoot, normalizedAgent)
+    };
+  });
 
   ipcMain.handle("agent-sync:select-folder", async (event) => {
     const win = event.sender.getOwnerBrowserWindow?.() ?? null;

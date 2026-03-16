@@ -1,6 +1,7 @@
 import * as React from "react";
 import { AgentSidebar } from "./components/AgentSidebar.jsx";
 import { BrowserSessions } from "./components/BrowserSessions.jsx";
+import { HydraSprite } from "./components/HydraSprite.jsx";
 import { NotificationFeed } from "./components/NotificationFeed.jsx";
 import { ProjectHistoryPanel } from "./components/ProjectHistoryPanel.jsx";
 import { ProjectPanel } from "./components/ProjectPanel.jsx";
@@ -9,6 +10,7 @@ import { TaskBroadcast } from "./components/TaskBroadcast.jsx";
 import { TaskQueueViewer } from "./components/TaskQueueViewer.jsx";
 import { useAgents } from "./hooks/useAgents.js";
 import { useProjectHistory } from "./hooks/useProjectHistory.js";
+import { useNotifications } from "./hooks/useNotifications.js";
 import { useProjectTasks } from "./hooks/useProjectTasks.js";
 import { useProjects } from "./hooks/useProjects.js";
 import { useTaskManager } from "./hooks/useTaskManager.js";
@@ -44,6 +46,7 @@ export default function App() {
   const agentState = useAgents(serverUrl);
   const projectTasks = useProjectTasks(serverUrl, projectState.activeProjectId);
   const projectHistory = useProjectHistory(serverUrl, projectState.activeProjectId);
+  const notificationState = useNotifications(serverUrl, projectState.activeProjectId);
   const taskManager = useTaskManager({
     activeProjectId: projectState.activeProjectId,
     agents: agentState.agents,
@@ -58,10 +61,24 @@ export default function App() {
     agentState.agents.find((agent) => agent.role === "orchestrator") || null;
   const workerAgents = agentState.agents.filter((agent) => agent.role !== "orchestrator");
 
-  const notifEvents = taskManager.taskEvents
-    .filter(ev => ["done", "error", "working", "delegated", "assistant"].includes(ev.kind))
+  const serverNotifEvents = (notificationState.notifications || []).map((item) => ({
+    id: item.id,
+    projectId: item.project_id,
+    timestamp: item.created_at,
+    kind: item.kind === "approval" ? "working" : item.kind,
+    label: item.title || "Server",
+    message: item.message
+  }));
+
+  const notifEvents = [...taskManager.taskEvents, ...serverNotifEvents]
+    .filter(ev => ["info", "done", "error", "working", "delegated", "assistant"].includes(ev.kind))
     .filter(ev => !ev.message?.startsWith("[Downloading"))
     .map((ev, i) => ({ ...ev, id: ev.id || `notif-${i}` }));
+
+  const recentTaskSpendUsd = projectTasks.tasks.reduce((sum, task) => {
+    const value = Number.parseFloat(task?.cost_usd ?? task?.costUsd ?? "0");
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
 
   // --- Notifications & Sound alerts ---
   const lastNotifId = React.useRef(null);
@@ -113,6 +130,12 @@ export default function App() {
     setRuntimeState((current) => ({ ...current, [agent.id]: state }));
   }
 
+  function hasAgentActiveTask(agentId) {
+    return projectTasks.tasks.some(
+      (task) => task.agent_id === agentId && ["pending", "sent", "working"].includes(task.status)
+    );
+  }
+
   if (bootError) {
     return <main className="grid place-items-center min-h-screen text-zinc-500">Failed to start: {bootError}</main>;
   }
@@ -161,21 +184,88 @@ export default function App() {
             />
           </div>
         ) : (
-          <div className="flex flex-col gap-6 mt-6 animate-in fade-in duration-500">
-            <button 
-              onClick={() => setIsSidebarCollapsed(false)} 
-              className="p-2 rounded-xl transition-all bg-indigo-500/20 text-indigo-400 shadow-lg shadow-indigo-500/10" 
-              title="Projects"
-            >
-              <span className="text-xl">📁</span>
-            </button>
-            <button 
-              onClick={() => {setIsSidebarCollapsed(false); setWorkspaceTab("agents");}} 
-              className={`p-2 rounded-xl transition-all ${workspaceTab === "agents" ? "bg-indigo-500/20 text-indigo-400" : "text-zinc-500 hover:text-zinc-300"}`} 
-              title="Agents"
-            >
-              <span className="text-xl">🤖</span>
-            </button>
+          <div className="animate-in fade-in duration-500 flex flex-col flex-1 min-h-0 w-full items-center">
+            <div className="flex flex-col gap-3 mt-2 items-center">
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed(false)}
+                className="p-2 rounded-xl transition-all bg-indigo-500/20 text-indigo-400 shadow-lg shadow-indigo-500/10"
+                title="Projects"
+              >
+                <span className="text-xl">📁</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSidebarCollapsed(false);
+                  setWorkspaceTab("agents");
+                }}
+                className={`p-2 rounded-xl transition-all ${
+                  workspaceTab === "agents"
+                    ? "bg-indigo-500/20 text-indigo-400"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+                title="Agents"
+              >
+                <span className="text-xl">🤖</span>
+              </button>
+            </div>
+
+            <div className="w-full px-2 mt-4 mb-2">
+              <div className="h-px bg-white/5" />
+            </div>
+
+            <div className="flex-1 min-h-0 w-full overflow-y-auto custom-scrollbar">
+              <div className="flex flex-col items-center gap-3 pb-4">
+                {agentState.agents.map((agent) => {
+                  const queueCount = (taskManager.taskQueues?.[agent.id] || []).length;
+                  const runtime = runtimeState[agent.id] || {};
+                  const isActive = hasAgentActiveTask(agent.id) || queueCount > 0;
+                  const activity =
+                    agent.status === "error"
+                      ? "error"
+                      : isActive
+                        ? agent.role === "orchestrator"
+                          ? "thinking"
+                          : "working"
+                        : runtime.loggedIn
+                          ? "sleep"
+                          : "sleep";
+                  const dotClass =
+                    agent.status === "error"
+                      ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]"
+                      : isActive
+                        ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse"
+                        : agent.status === "done"
+                          ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+                          : "bg-zinc-600";
+
+                  return (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      className="relative w-12 h-12 rounded-2xl border border-white/5 bg-zinc-950 hover:bg-white/[0.03] hover:border-indigo-500/25 transition-all flex items-center justify-center"
+                      title={`${agent.name}${runtime.loggedIn ? "" : " (not checked)"}`}
+                      onClick={() => handleInspectAgent(agent)}
+                      onDoubleClick={() => handleOpenAgent(agent)}
+                    >
+                      <HydraSprite
+                        activity={activity}
+                        role={agent.role}
+                        label={agent.name}
+                        size={28}
+                      />
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-900 ${dotClass}`} />
+                      {queueCount ? (
+                        <span className="absolute -top-1 -left-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 text-[9px] font-black flex items-center justify-center">
+                          {queueCount}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </aside>
@@ -215,6 +305,12 @@ export default function App() {
                 <span className="text-[9px] font-black tracking-[0.2em] uppercase text-zinc-500 leading-none">Active Project</span>
                 <strong className="text-xs text-indigo-400 truncate max-w-[140px] font-bold">{activeProject?.name || "None"}</strong>
               </div>
+              {recentTaskSpendUsd > 0 ? (
+                <div className="pl-3 ml-1 border-l border-white/5 grid gap-0.5" title="Estimated spend across the latest tasks (API-routed agents only).">
+                  <span className="text-[9px] font-black tracking-[0.2em] uppercase text-zinc-600 leading-none">Spend</span>
+                  <strong className="text-xs text-emerald-400 tabular-nums font-bold">${recentTaskSpendUsd.toFixed(2)}</strong>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -244,6 +340,7 @@ export default function App() {
                 onUpdateAgentRole={agentState.updateAgentRole}
                 onUpdateAgentSpecialty={agentState.updateAgentSpecialty}
                 onRenameAgent={agentState.renameAgent}
+                projectRoot={activeProject?.root_path || ""}
                 fullPage={true}
               />
             </div>

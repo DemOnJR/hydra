@@ -4,6 +4,7 @@ import path from "node:path";
 import { findChromePath } from "./chromeFinder.js";
 import { getPlatformUrl } from "./platformUrls.js";
 import { getSessionsDir } from "../shared/runtimePaths.js";
+import { getProvider } from "../../injectors/index.js";
 
 const DEBUG_PORT_BASE = 9550;
 const DEBUG_PORT_RANGE = 1000;
@@ -28,18 +29,6 @@ function sleep(ms) {
 async function loadChromium() {
   const playwright = await import("playwright");
   return playwright.chromium;
-}
-
-async function loadPlatformAdapter(platform) {
-  switch (platform) {
-    case "claude":
-      return import("../../injectors/claude.js");
-    case "gemini":
-      return import("../../injectors/gemini.js");
-    case "chatgpt":
-    default:
-      return import("../../injectors/chatgpt.js");
-  }
 }
 
 function extractTemporaryUnavailableMessage(value) {
@@ -300,7 +289,11 @@ export async function openAgent(agentId, platformUrl) {
 
 export async function inspectAgent(agentId, platform, platformUrl) {
   const session = await ensureSession(agentId, platformUrl);
-  const adapter = await loadPlatformAdapter(platform);
+  const adapter = await getProvider(platform);
+
+  if (!adapter) {
+    throw new Error(`Provider adapter for "${platform}" not found.`);
+  }
 
   await ensurePlatformPage(session, platformUrl);
   await session.page.bringToFront();
@@ -322,7 +315,11 @@ export async function inspectAgent(agentId, platform, platformUrl) {
 export async function injectPrompt(agentId, platform, prompt) {
   const platformUrl = getPlatformUrl(platform);
   const session = await ensureSession(agentId, platformUrl);
-  const adapter = await loadPlatformAdapter(platform);
+  const adapter = await getProvider(platform);
+
+  if (!adapter) {
+    throw new Error(`Provider adapter for "${platform}" not found.`);
+  }
 
   await ensurePlatformPage(session, platformUrl);
   await session.page.bringToFront();
@@ -341,7 +338,11 @@ export async function injectPrompt(agentId, platform, prompt) {
 export async function waitForResponse(agentId, platform, timeoutMs = 120000, options = {}) {
   const platformUrl = getPlatformUrl(platform);
   const session = await ensureSession(agentId, platformUrl);
-  const adapter = await loadPlatformAdapter(platform);
+  const adapter = await getProvider(platform);
+
+  if (!adapter) {
+    throw new Error(`Provider adapter for "${platform}" not found.`);
+  }
 
   try {
     return await adapter.waitForResponse(session.page, timeoutMs, options);

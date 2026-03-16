@@ -14,7 +14,8 @@
     "start:server": "node server/index.js",
     "build:renderer": "vite build",
     "db:init": "node server/db/init.js",
-    "monitor:errors": "node scripts/monitor-errors.js"
+    "monitor:errors": "node scripts/monitor-errors.js",
+    "git:cleanup-branches": "node scripts/cleanup-branches.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

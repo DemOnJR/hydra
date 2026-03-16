@@ -170,6 +170,18 @@ export function initDb() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL DEFAULT 'info'
+        CHECK (kind IN ('info', 'working', 'done', 'error', 'approval')),
+      title TEXT DEFAULT '',
+      message TEXT NOT NULL,
+      metadata TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      read_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS project_compactions (
       project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
       orchestrator_summary TEXT DEFAULT '',
@@ -256,6 +268,35 @@ export function initDb() {
 
   if (!agentColumns.includes("session_dir")) {
     database.exec("ALTER TABLE agents ADD COLUMN session_dir TEXT DEFAULT '';");
+  }
+
+  const taskColumns = database
+    .prepare("PRAGMA table_info(tasks)")
+    .all()
+    .map((column) => column.name);
+
+  if (!taskColumns.includes("model")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN model TEXT DEFAULT '';");
+  }
+
+  if (!taskColumns.includes("provider")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN provider TEXT DEFAULT '';");
+  }
+
+  if (!taskColumns.includes("prompt_tokens")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN prompt_tokens INTEGER;");
+  }
+
+  if (!taskColumns.includes("completion_tokens")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN completion_tokens INTEGER;");
+  }
+
+  if (!taskColumns.includes("total_tokens")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN total_tokens INTEGER;");
+  }
+
+  if (!taskColumns.includes("cost_usd")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN cost_usd REAL;");
   }
 
   database

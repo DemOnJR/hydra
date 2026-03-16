@@ -1,3 +1,5 @@
+import { registerProvider } from "./registry.js";
+
 const STOP_SELECTOR = 'button[aria-label*="Stop"]';
 const RESPONSE_CONTAINER_SELECTOR = "[data-is-streaming]";
 const SETTLED_RESPONSE_SELECTORS = [
@@ -436,3 +438,9 @@ export async function isLoggedIn(page) {
   const url = page.url();
   return Boolean(url) && !url.includes("/login") && !url.includes("/signup");
 }
+
+registerProvider("claude", {
+  inject,
+  waitForResponse,
+  isLoggedIn
+});

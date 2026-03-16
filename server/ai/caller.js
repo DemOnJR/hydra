@@ -4,6 +4,7 @@ import { getProviderForModel } from "./modelConfig.js";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { callLocal } from "./localRunner.js";
+import { estimateCostUsd, normalizeUsage } from "./pricing.js";
 
 function ensureApiKey(envVarName) {
   if (!process.env[envVarName]?.trim()) {
@@ -170,6 +171,12 @@ async function callOpenAI({ model, systemPrompt, messages, tools, responseFormat
 
   const response = await client.chat.completions.create(params);
   const choice = response.choices[0];
+  const usageNormalized = normalizeUsage("openai", response.usage);
+  const costUsd = estimateCostUsd({
+    provider: "openai",
+    model,
+    usageNormalized
+  });
 
   return {
     provider: "openai",
@@ -186,6 +193,8 @@ async function callOpenAI({ model, systemPrompt, messages, tools, responseFormat
       tool_calls: choice?.message?.tool_calls ?? []
     },
     usage: response.usage ?? null,
+    usageNormalized,
+    costUsd,
     finishReason: choice?.finish_reason ?? null
   };
 }
@@ -210,6 +219,12 @@ async function callClaude({ model, systemPrompt, messages, tools, responseFormat
 
   const textBlocks = response.content.filter((block) => block.type === "text");
   const toolBlocks = response.content.filter((block) => block.type === "tool_use");
+  const usageNormalized = normalizeUsage("anthropic", response.usage);
+  const costUsd = estimateCostUsd({
+    provider: "anthropic",
+    model,
+    usageNormalized
+  });
 
   return {
     provider: "anthropic",
@@ -224,6 +239,8 @@ async function callClaude({ model, systemPrompt, messages, tools, responseFormat
       content: response.content
     },
     usage: response.usage ?? null,
+    usageNormalized,
+    costUsd,
     finishReason: response.stop_reason ?? null
   };
 }
@@ -350,6 +367,12 @@ async function callOllama({ model, systemPrompt, messages, tools, responseFormat
 
   const response = await client.chat.completions.create(params);
   const choice = response.choices[0];
+  const usageNormalized = normalizeUsage("ollama", response.usage);
+  const costUsd = estimateCostUsd({
+    provider: "ollama",
+    model,
+    usageNormalized
+  });
 
   return {
     provider: "ollama",
@@ -366,6 +389,8 @@ async function callOllama({ model, systemPrompt, messages, tools, responseFormat
       tool_calls: choice?.message?.tool_calls ?? []
     },
     usage: response.usage ?? null,
+    usageNormalized,
+    costUsd,
     finishReason: choice?.finish_reason ?? null
   };
 }
@@ -425,6 +450,13 @@ export async function callAI({
       onProgress
     });
 
+    const usageNormalized = normalizeUsage("local", result.usage);
+    const costUsd = estimateCostUsd({
+      provider: "local",
+      model,
+      usageNormalized
+    });
+
     return {
       provider: "local",
       text: result.text,
@@ -434,6 +466,8 @@ export async function callAI({
         content: result.text
       },
       usage: result.usage,
+      usageNormalized,
+      costUsd,
       finishReason: result.finishReason
     };
   }

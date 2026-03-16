@@ -23,6 +23,7 @@ export function AgentSidebar({
   onUpdateAgentRole,
   onUpdateAgentSpecialty,
   onRenameAgent,
+  projectRoot = "",
   fullPage = false
 }) {
   const [showModal, setShowModal] = React.useState(false);
@@ -34,6 +35,47 @@ export function AgentSidebar({
   // Inline name editing state
   const [editingId, setEditingId] = React.useState(null);
   const [editValue, setEditValue] = React.useState("");
+
+  const [journalOpen, setJournalOpen] = React.useState(false);
+  const [journalLoading, setJournalLoading] = React.useState(false);
+  const [journalAgent, setJournalAgent] = React.useState(null);
+  const [journalPath, setJournalPath] = React.useState("");
+  const [journalContent, setJournalContent] = React.useState("");
+
+  async function openJournal(agent) {
+    if (!projectRoot?.trim()) {
+      setJournalAgent(agent);
+      setJournalPath("");
+      setJournalContent("Project root path is not configured.");
+      setJournalOpen(true);
+      return;
+    }
+
+    if (!window.agentSync?.getAgentJournal) {
+      setJournalAgent(agent);
+      setJournalPath("");
+      setJournalContent("Journal IPC is not available.");
+      setJournalOpen(true);
+      return;
+    }
+
+    setJournalAgent(agent);
+    setJournalLoading(true);
+    setJournalOpen(true);
+    try {
+      const result = await window.agentSync.getAgentJournal({
+        projectRoot,
+        agent
+      });
+      setJournalPath(result?.journalPath || "");
+      setJournalContent(result?.content || "");
+    } catch (e) {
+      setJournalPath("");
+      setJournalContent(e.message || "Failed to load journal.");
+    } finally {
+      setJournalLoading(false);
+    }
+  }
 
   function startEdit(agent) {
     setEditingId(agent.id);
@@ -189,6 +231,14 @@ export function AgentSidebar({
               <div className="flex gap-2 pt-2 border-t border-white/5 mt-auto">
                 <button
                   type="button"
+                  className="bg-zinc-900 border border-white/10 text-zinc-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-500/10 hover:text-indigo-300 hover:border-indigo-500/20 transition-all shadow-sm active:scale-95"
+                  onClick={() => openJournal(agent)}
+                  title="View agent journal"
+                >
+                  Journal
+                </button>
+                <button
+                  type="button"
                   className="flex-1 bg-zinc-900 border border-white/10 text-zinc-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-zinc-800 hover:text-zinc-200 transition-all shadow-sm active:scale-95"
                   onClick={() =>
                     onUpdateAgentRole(
@@ -211,6 +261,53 @@ export function AgentSidebar({
           ))
         )}
       </div>
+
+      {journalOpen ? (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[120] p-4 animate-in fade-in duration-200"
+          onClick={(event) => event.target === event.currentTarget && setJournalOpen(false)}
+        >
+          <div className="bg-zinc-900 border border-white/10 rounded-[28px] w-full max-w-3xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 bg-zinc-900/80 backdrop-blur-md">
+              <div className="min-w-0">
+                <h3 className="text-sm font-black text-zinc-100 uppercase tracking-tight">
+                  {journalAgent?.name ? `${journalAgent.name} Journal` : "Agent Journal"}
+                </h3>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest truncate">
+                  {journalPath || "(no journal path)"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-xl bg-zinc-800 border border-white/5 text-zinc-300 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-700 transition-colors"
+                  onClick={() => journalAgent && openJournal(journalAgent)}
+                  disabled={journalLoading}
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  className="w-10 h-10 flex items-center justify-center rounded-full bg-zinc-800 text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-all shadow-lg active:scale-90"
+                  onClick={() => setJournalOpen(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {journalLoading ? (
+                <p className="text-zinc-500 text-xs italic">Loading journal...</p>
+              ) : (
+                <pre className="text-[11px] text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2 bg-zinc-950/40 border border-white/5 rounded-2xl p-4">
+                  {journalContent?.trim() || "(empty journal)"}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showModal ? (
         <div

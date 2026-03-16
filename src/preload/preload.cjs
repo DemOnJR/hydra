@@ -3,6 +3,11 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("agentSync", {
   getConfig: () => ipcRenderer.invoke("agent-sync:get-config"),
   selectFolder: () => ipcRenderer.invoke("agent-sync:select-folder"),
+  getAgentJournal: ({ projectRoot, agent }) =>
+    ipcRenderer.invoke("agent-sync:get-agent-journal", {
+      projectRoot,
+      agent
+    }),
   openAgent: (agentId, platform) =>
     ipcRenderer.invoke("agent-sync:open-agent", {
       agentId,

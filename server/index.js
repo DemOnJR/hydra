@@ -14,6 +14,7 @@ import sessionsRouter from "./routes/sessions.js";
 import settingsRouter from "./routes/settings.js";
 import tasksRouter from "./routes/tasks.js";
 import todosRouter from "./routes/todos.js";
+import notificationsRouter from "./routes/notifications.js";
 import { registerMcpRoutes } from "./mcp.js";
 
 const HOST = process.env.CONTEXT_SERVER_HOST || "127.0.0.1";
@@ -83,6 +84,7 @@ function buildServer() {
   app.use("/api/ai", aiRouter);
   app.use("/api/browser-bridge", browserBridgeRouter);
   app.use("/api/tasks", tasksRouter);
+  app.use("/api/notifications", notificationsRouter);
   app.use("/api/sessions", sessionsRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/todos", todosRouter);

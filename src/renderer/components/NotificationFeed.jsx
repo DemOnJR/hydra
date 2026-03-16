@@ -7,6 +7,7 @@ function formatClock(value) {
 
 function getEventIcon(kind) {
   switch (kind) {
+    case "info": return "ℹ️";
     case "done": return "✅";
     case "error": return "❌";
     case "working": return "⚙️";
