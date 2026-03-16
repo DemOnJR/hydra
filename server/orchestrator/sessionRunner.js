@@ -16,7 +16,6 @@ import {
 } from "../db/queries.js";
 import { buildOrchestratorPrompt } from "../prompts/orchestrator.js";
 import { buildOrchestratorContext } from "./contextBuilder.js";
-import { notifyProject } from "./notifier.js";
 import {
   getGitDiff,
   getGitStatus,
@@ -291,20 +290,6 @@ async function runSession(sessionId) {
     dryRun: Boolean(session.dry_run)
   });
 
-  notifyProject(session.project_id, {
-    kind: "working",
-    title: "Orchestrator",
-    message: session.dry_run
-      ? "Dry run started."
-      : `Session started (model: ${session.orchestrator_model}).`,
-    metadata: {
-      sessionId,
-      status: "running",
-      model: session.orchestrator_model,
-      dryRun: Boolean(session.dry_run)
-    }
-  });
-
   if (session.dry_run) {
     const summary = `Dry run complete. Context prepared for ${context.project.name} on branch ${context.gitLog.branch}.`;
     updateSession(sessionId, {
@@ -316,18 +301,6 @@ async function runSession(sessionId) {
     logSession(sessionId, "Dry run completed.", "info", {
       branch: context.gitLog.branch,
       promptChars: prompt.length
-    });
-
-    notifyProject(session.project_id, {
-      kind: "done",
-      title: "Orchestrator",
-      message: summary,
-      metadata: {
-        sessionId,
-        status: "complete",
-        branch: context.gitLog.branch,
-        dryRun: true
-      }
     });
     return getSessionById(sessionId);
   }
@@ -385,16 +358,6 @@ async function runSession(sessionId) {
         completed_at: new Date().toISOString()
       });
       logSession(sessionId, "Session completed.", "info");
-
-      notifyProject(runtime.context.project.id, {
-        kind: "done",
-        title: "Orchestrator",
-        message: summary,
-        metadata: {
-          sessionId,
-          status: "complete"
-        }
-      });
       return getSessionById(sessionId);
     }
 
@@ -441,16 +404,6 @@ async function runSession(sessionId) {
 
     if (approvalRequested) {
       logSession(sessionId, "Session paused for approval.", "warning");
-
-      notifyProject(runtime.context.project.id, {
-        kind: "approval",
-        title: "Approval Required",
-        message: "Orchestrator session is waiting for approval.",
-        metadata: {
-          sessionId,
-          status: "waiting_approval"
-        }
-      });
       return getSessionById(sessionId);
     }
 
@@ -463,16 +416,6 @@ async function runSession(sessionId) {
     completed_at: new Date().toISOString()
   });
   logSession(sessionId, "Max cycle limit reached.", "warning");
-
-  notifyProject(runtime.context.project.id, {
-    kind: "error",
-    title: "Orchestrator",
-    message: "Session stopped after reaching the max cycle limit.",
-    metadata: {
-      sessionId,
-      status: "stopped"
-    }
-  });
   return getSessionById(sessionId);
 }
 
@@ -510,16 +453,6 @@ export async function startOrchestratorSession(projectId, options = {}) {
         completed_at: new Date().toISOString()
       });
       logSession(session.id, `Session failed: ${error.message}`, "error");
-
-      notifyProject(projectId, {
-        kind: "error",
-        title: "Orchestrator",
-        message: error.message,
-        metadata: {
-          sessionId: session.id,
-          status: "error"
-        }
-      });
     })
     .finally(() => {
       activeProjectSessions.delete(projectId);

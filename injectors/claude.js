@@ -50,9 +50,35 @@ async function getEditorText(editor) {
   });
 }
 
-async function clearEditor(editor) {
+async function clearEditor(page, editor) {
   await editor.click();
-  await editor.fill("");
+
+  try {
+    await editor.fill("", { timeout: 2000 });
+    return;
+  } catch {
+    // Some ProseMirror/Tiptap editors intermittently fail Playwright's editable check for fill().
+    // Fall back to keyboard-based clearing.
+  }
+
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Backspace");
+}
+
+async function setEditorText(page, editor, text) {
+  const next = String(text ?? "");
+  await editor.click();
+
+  try {
+    await editor.fill(next, { timeout: 5000 });
+    return;
+  } catch {
+    // Fall back to keyboard insertion.
+  }
+
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.insertText(next);
 }
 
 async function captureResponseState(page, options = {}) {
@@ -262,8 +288,8 @@ export async function inject(page, prompt) {
   const editor = await getEditor(page);
   const baselineResponseState = await captureResponseState(page, { includeStreaming: true });
   await editor.click();
-  await clearEditor(editor);
-  await editor.fill(prompt);
+  await clearEditor(page, editor);
+  await setEditorText(page, editor, prompt);
   await page.waitForTimeout(250);
 
   const sendSelectors = [
@@ -291,7 +317,7 @@ export async function inject(page, prompt) {
     return { baselineResponseState };
   }
 
-  await clearEditor(editor);
+  await clearEditor(page, editor);
   throw new Error("[Claude] Message did not send. The draft was left in the composer.");
 }
 

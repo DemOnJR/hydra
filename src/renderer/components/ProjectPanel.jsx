@@ -59,7 +59,7 @@ export function ProjectPanel({
           <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest py-8 text-center border border-dashed border-white/5 rounded-xl">No projects</p>
         ) : (
           projects.map((project) => (
-            <div key={project.id} className="flex items-center group relative">
+            <div key={project.id} className="flex items-center gap-1 group">
               <button
                 type="button"
                 className={`flex-1 flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${
@@ -69,22 +69,29 @@ export function ProjectPanel({
                 }`}
                 onClick={() => onActivateProject(project.id)}
               >
-                <span className="truncate pr-4">{project.name}</span>
+                <span className="truncate pr-2">{project.name}</span>
                 {project.id === activeProjectId && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)] shrink-0" />
                 )}
               </button>
-              <button
-                type="button"
-                className="absolute right-2 p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 bg-zinc-900/80 backdrop-blur-sm border border-white/5"
-                title="Delete project"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (window.confirm(`Delete "${project.name}"?`)) {
-                    onDeleteProject(project.id);
-                  }
-                }}
-              >✕</button>
+              
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  className="p-2.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
+                  title="Delete project"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Delete "${project.name}"?`)) {
+                      onDeleteProject(project.id);
+                    }
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                    <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
             </div>
           ))
         )}
