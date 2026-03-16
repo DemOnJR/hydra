@@ -81,6 +81,7 @@ export async function buildOrchestratorContext(projectId) {
       id: project.id,
       name: project.name,
       description: project.description,
+      githubLink: project.github_link || "",
       architecture: savedContext.architecture || "",
       techStack: savedContext.tech_stack || "",
       conventions: savedContext.conventions || "",

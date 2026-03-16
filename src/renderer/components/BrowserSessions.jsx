@@ -65,7 +65,6 @@ export function BrowserSessions({
   runtimeState,
   onInspectAgent,
   onOpenAgent,
-  taskQueues,
   tasks,
   isCollapsed = false,
   onToggleCollapse,
@@ -114,11 +113,10 @@ export function BrowserSessions({
       <div className="flex flex-col w-full">
         {agents.map((agent) => {
           const state = runtimeState[agent.id] || {};
-          const queue = taskQueues?.[agent.id] || [];
           const snapshot = getAgentTaskSnapshot(agent, tasks);
           const interactiveReplyState = extractInteractiveReplyState(snapshot.latestTask?.response || "");
           const awaitingReply = !snapshot.activeTask && interactiveReplyState.awaitingInput;
-          const activeTaskText = snapshot.activeTask?.user_task || queue[0] || "";
+          const activeTaskText = snapshot.activeTask?.user_task || "";
           const latestTaskText = snapshot.latestTask?.user_task || "";
           const activity = awaitingReply ? "talking" : deriveAgentActivity(agent, state, tasks);
           const visualStatus =

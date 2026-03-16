@@ -152,10 +152,14 @@ async function confirmSendStarted(page, baselineResponseState, timeoutMs = 12000
   return false;
 }
 
-function extractBalancedJsonValue(text) {
+function extractBalancedJsonValue(text, searchOffset = 0) {
   const source = String(text ?? "");
-  const objectIndex = source.indexOf("{");
-  const arrayIndex = source.indexOf("[");
+  if (searchOffset >= source.length) {
+    return null;
+  }
+
+  const objectIndex = source.indexOf("{", searchOffset);
+  const arrayIndex = source.indexOf("[", searchOffset);
   let startIndex = -1;
 
   if (objectIndex === -1) {
@@ -204,34 +208,49 @@ function extractBalancedJsonValue(text) {
       depth -= 1;
 
       if (depth === 0) {
-        return source.slice(startIndex, index + 1);
+        return {
+          value: source.slice(startIndex, index + 1),
+          startIndex,
+          endIndex: index + 1
+        };
       }
     }
   }
 
-  return null;
+  return {
+    value: null,
+    startIndex,
+    endIndex: startIndex + 1
+  };
 }
 
 function parseHydraJson(candidateText) {
-  const jsonText = extractBalancedJsonValue(candidateText);
+  const text = String(candidateText ?? "").trim();
+  let currentOffset = 0;
 
-  if (!jsonText) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(jsonText);
-    const request = Array.isArray(parsed) ? parsed[0] : parsed;
-
-    if (!request || typeof request !== "object") {
-      return null;
+  while (currentOffset < text.length) {
+    const result = extractBalancedJsonValue(text, currentOffset);
+    if (!result) {
+      break;
     }
 
-    const action = String(request.action ?? "").trim();
-    return action ? request : null;
-  } catch {
-    return null;
+    if (result.value) {
+      try {
+        const parsed = JSON.parse(result.value);
+        const request = Array.isArray(parsed) ? parsed[0] : parsed;
+
+        if (request && typeof request === "object" && String(request.action ?? "").trim()) {
+          return request;
+        }
+      } catch {
+        // Not valid JSON
+      }
+    }
+
+    currentOffset = result.startIndex + 1;
   }
+
+  return null;
 }
 
 function hasHydraLikeContent(text) {
@@ -357,11 +376,15 @@ async function readNextResponse(page, timeoutMs, baselineResponseState, options 
       const stopVisible = await stopButton.isVisible().catch(() => false);
       const stableMs = lastChangedAt ? Date.now() - lastChangedAt : 0;
 
-      if (latestText && !hasHydraLikeContent(latestText) && !stopVisible && stableMs >= 1000) {
+      // 1. If the agent stopped typing, return whatever we have
+      if (sawAdvance && latestText && !stopVisible && stableMs >= 1000) {
         return latestText;
       }
 
-      if (latestText && hasCompleteHydraRequest(latestText) && stableMs >= 1000) {
+      // 2. If the agent is still typing (stop button is visible), 
+      // ONLY return early if we have a valid, complete Hydra request 
+      // AND it's been stable for a few seconds (to avoid race conditions with streaming)
+      if (latestText && stopVisible && hasCompleteHydraRequest(latestText) && stableMs >= 3000) {
         return latestText;
       }
     }

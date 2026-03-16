@@ -226,9 +226,6 @@ function buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMes
   }
 
   // 2. Handle Events (Only show if task NOT finished)
-  const taskLatestWorkingEvent = {};
-  const neuralStreams = [];
-
   for (const event of taskEvents) {
     if (event.agentId !== orchestratorAgent?.id && event.kind !== "system") continue;
 
@@ -238,167 +235,52 @@ function buildConversationItems({ tasks, taskEvents, orchestratorAgent, localMes
     // Hide events for tasks that are already rendered as finished blocks
     if (finishedTaskIds.has(event.taskId)) continue;
 
-    if (event.kind === "neural_streaming" && event.taskId) {
-      neuralStreams.push({
-        key: `neural-${event.taskId}-${event.id}`,
-        kind: "neural_streaming",
+    if (event.kind === "tool_start" || event.kind === "tool_done" || event.kind === "tool_error") {
+      items.push({
+        key: `event-${event.id || event.timestamp}`,
+        kind: event.kind,
         timestamp: event.timestamp || now,
         label: event.label || "Hydra",
-        text: trimText(event.message)
+        text: trimText(event.message),
+        action: event.action || null,
+        metadata: event.data ? (typeof event.data === "string" ? JSON.parse(event.data) : event.data) : null
       });
       continue;
     }
-
-    if ((event.kind === "working" || event.kind === "progress") && event.taskId) {
-      taskLatestWorkingEvent[event.taskId] = event;
-      continue;
-    }
-
-    items.push({
-      key: event.id,
-      kind: event.kind,
-      timestamp: event.timestamp || now,
-      label: event.label || "Hydra",
-      text: trimText(event.message),
-      action: event.action || null,
-      metadata: event.data ? (typeof event.data === "string" ? JSON.parse(event.data) : event.data) : null
-    });
   }
 
-  // Add neural streams
-  items.push(...neuralStreams);
-
-  // Add the latest working state (Only for active tasks)
-  for (const event of Object.values(taskLatestWorkingEvent)) {
-    items.push({
-      key: `working-${event.taskId}`,
-      kind: "thinking_process",
-      timestamp: event.timestamp || now,
-      label: event.label || "Hydra",
-      text: event.message || "Synthesizing intelligence..."
-    });
-  }
-
-  // 3. Initial "Warm up" state
-  const activeTask = [...tasks].reverse().find(t => ["pending", "sent"].includes(t.status));
-  if (activeTask && !taskLatestWorkingEvent[activeTask.id]) {
+  // Initial "Warm up" state for active tasks
+  const activeTask = [...tasks].reverse().find(t => ["pending", "sent", "working"].includes(t.status));
+  if (activeTask && activeTask.agent_id === orchestratorAgent?.id) {
     items.push({
       key: `status-init-${activeTask.id}`,
       kind: "thinking_process",
       timestamp: activeTask.created_at || now,
       label: orchestratorAgent?.name || "Orchestrator",
-      text: "Establishing neural link..."
+      text: activeTask.status === "working" ? "Thinking..." : "Establishing neural link..."
     });
   }
 
   return items
-    .filter((item) => item.text)
+    .filter((item) => item.text || item.action)
     .sort((left, right) => getTimestamp(left.timestamp) - getTimestamp(right.timestamp))
     .slice(-50);
 }
 
 function ConversationItem({ item, onRetry }) {
-  const [showDetail, setShowDetail] = React.useState(false);
-
-  if (item.kind === "neural_streaming") {
-    return (
-      <div className="flex flex-col gap-2 self-start max-w-[90%] animate-in fade-in slide-in-from-left-4 duration-500">
-        <div className="flex items-center gap-2 px-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)] animate-pulse" />
-          <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">
-            Neural Stream
-          </span>
-          <span className="text-zinc-700 tabular-nums ml-auto font-mono text-[9px]">{formatClock(item.timestamp)}</span>
-        </div>
-        <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-[24px] rounded-tl-none text-[14px] leading-relaxed font-medium text-zinc-300 whitespace-pre-wrap relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-          <div className="relative">
-            {!isUser && parseChangeSummary(item.text) ? parseChangeSummary(item.text).mainText : item.text}
-            <span className="inline-block w-1.5 h-3.5 bg-indigo-500 ml-1.5 animate-pulse rounded-full align-middle" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (item.kind === "thinking_process") {
+  const isUser = item.kind === "user";
+  const isThinking = item.kind === "thinking_process";
+  
+  if (isThinking) {
     return (
       <div className="flex flex-col gap-2 self-start max-w-[90%]">
-        <div 
-          className="flex items-center gap-3 py-2.5 px-4 rounded-[5px] bg-indigo-500/5 border border-indigo-500/10 text-[11px] cursor-pointer hover:bg-indigo-500/10 transition-all group"
-          onClick={() => setShowDetail(!showDetail)}
-        >
+        <div className="flex items-center gap-3 py-2.5 px-4 rounded-[5px] bg-indigo-500/5 border border-indigo-500/10 text-[11px]">
           <TriangleLoader />
-          <div className="flex flex-col">
-            <span className="font-black text-indigo-400 uppercase tracking-[0.15em] leading-none">
-              Thinking Process
-            </span>
-            <span className="text-[9px] text-zinc-600 mt-1 uppercase font-bold group-hover:text-zinc-400 transition-colors">
-              {showDetail ? "Click to collapse" : "Click to view stream"}
-            </span>
-          </div>
+          <span className="font-black text-indigo-400 uppercase tracking-[0.15em] leading-none">
+            {item.text}
+          </span>
           <span className="text-zinc-700 tabular-nums ml-auto font-mono">{formatClock(item.timestamp)}</span>
         </div>
-        
-        {showDetail && (
-          <div className="ml-4 pl-4 border-l-2 border-indigo-500/20 py-2 animate-in fade-in slide-in-from-left-2 duration-300">
-            <div className="text-xs text-zinc-400 font-medium leading-relaxed bg-zinc-900/50 p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
-              {!isUser && parseChangeSummary(item.text) ? parseChangeSummary(item.text).mainText : item.text}
-              <span className="inline-block w-1.5 h-3 bg-indigo-500 ml-1 animate-pulse" />
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (item.kind === "system" || item.kind === "info") {
-    const isCommand = item.metadata?.kind === "command";
-    const isEdit = item.metadata?.kind === "file_edit";
-
-    return (
-      <div className="flex flex-col gap-2 self-center w-full max-w-2xl">
-        <div 
-          className="flex items-center gap-3 py-2 px-4 rounded-xl bg-zinc-900 border border-white/5 text-[10px] text-zinc-500 hover:border-indigo-500/30 transition-all cursor-pointer shadow-sm group"
-          onClick={() => setShowDetail(!showDetail)}
-        >
-          <div className={`w-1.5 h-1.5 rounded-full ${isCommand ? "bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]" : "bg-indigo-500"}`} />
-          <span className="font-black uppercase tracking-widest text-zinc-400 flex-1">
-            {isCommand ? "Hydra Terminal" : isEdit ? "Neural Edit" : "System Core"}
-          </span>
-          <span className="text-zinc-600 font-black tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
-            {showDetail ? "COLLAPSE" : "EXPAND"}
-          </span>
-        </div>
-
-        {showDetail && isCommand && (
-          <div className="bg-black rounded-[5px] border border-emerald-500/20 p-5 font-mono text-xs leading-relaxed terminal-glow animate-in slide-in-from-top-2">
-            <div className="flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
-              <div className="flex gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/40" />
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500/20 border border-amber-500/40" />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/20 border border-emerald-500/40" />
-              </div>
-              <span className="ml-3 text-zinc-600 text-[9px] uppercase font-black tracking-widest">Execution Buffer</span>
-            </div>
-            <div className="text-emerald-500/90 mb-2 flex items-center gap-2">
-              <span className="opacity-50">#</span> {item.metadata.command || "exec"}
-            </div>
-            <pre className="text-zinc-400 whitespace-pre-wrap break-all custom-scrollbar max-h-80 overflow-y-auto pr-2">
-              <code>
-                {item.metadata.stdout || item.metadata.stderr || "No output returned."}
-              </code>
-            </pre>
-          </div>
-        )}
-
-        {showDetail && isEdit && (
-          <div className="bg-zinc-950 rounded-[5px] border border-white/5 p-5 animate-in slide-in-from-top-2 shadow-inner">
-             <pre className="text-[11px] font-mono leading-relaxed overflow-x-auto custom-scrollbar text-zinc-400">
-              <code>{item.metadata.diff || "No structural changes recorded."}</code>
-            </pre>
-          </div>
-        )}
       </div>
     );
   }
@@ -422,11 +304,10 @@ function ConversationItem({ item, onRetry }) {
     );
   }
 
-  const isUser = item.kind === "user";
-  const bubbleClass = `flex flex-col gap-2 max-w-[85%] p-6 rounded-[32px] border shadow-2xl transition-all animate-in slide-in-from-bottom-2 duration-300 ${
+  const bubbleClass = `flex flex-col gap-2 max-w-[85%] p-6 rounded-[5px] border shadow-2xl transition-all animate-in slide-in-from-bottom-2 duration-300 ${
     isUser
-      ? "self-end bg-indigo-600 text-white border-indigo-500 rounded-tr-none"
-      : "self-start bg-zinc-900 border-white/5 text-zinc-100 rounded-tl-none"
+      ? "self-end bg-indigo-600 text-white border-indigo-500"
+      : "self-start bg-zinc-900 border-white/5 text-zinc-100"
   }`;
 
   return (
@@ -539,7 +420,7 @@ export function TaskBroadcast({
   const isWorking = tasks.some(t => t.agent_id === orchestratorAgent?.id && ["pending", "sent", "working"].includes(t.status));
 
   return (
-    <section className="flex flex-col bg-zinc-900/50 border border-white/5 rounded-[40px] overflow-hidden h-full shadow-2xl relative">
+    <section className="flex flex-col bg-zinc-900/50 border border-white/5 rounded-[5px] overflow-hidden h-full shadow-2xl relative">
       <div className="flex items-center justify-between p-5 border-b border-white/5 bg-zinc-900/80 backdrop-blur-md shrink-0 z-20">
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -573,7 +454,7 @@ export function TaskBroadcast({
       </div>
 
       <form className="p-6 bg-zinc-950/80 border-t border-white/5 z-20 backdrop-blur-2xl" onSubmit={handleSubmit}>
-        <div className={`relative flex items-end gap-3 bg-zinc-900/80 border rounded-[32px] p-2.5 transition-all duration-500 ${disabled ? "opacity-40 grayscale" : "border-white/10 shadow-2xl focus-within:border-indigo-500/50 shadow-indigo-500/5"}`}>
+        <div className={`relative flex items-end gap-3 bg-zinc-900/80 border rounded-[5px] p-2.5 transition-all duration-500 ${disabled ? "opacity-40 grayscale" : "border-white/10 shadow-2xl focus-within:border-indigo-500/50 shadow-indigo-500/5"}`}>
           <textarea
             value={taskText}
             onChange={(e) => setTaskText(e.target.value)}

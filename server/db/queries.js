@@ -6,7 +6,6 @@ const PROJECT_MODES = ["manual", "semi-auto", "full-auto"];
 const TODO_STATUSES = ["pending", "in_progress", "complete"];
 const TODO_PRIORITIES = ["low", "medium", "high", "critical"];
 const SESSION_STATUSES = [
-  "queued",
   "running",
   "waiting_approval",
   "complete",
@@ -137,6 +136,10 @@ function buildCompactionText(projectId) {
     sharedSections.push(`Project root: ${project.root_path.trim()}`);
   }
 
+  if (project?.github_link?.trim()) {
+    sharedSections.push(`Project GitHub repository: ${project.github_link.trim()}`);
+  }
+
   if (context.architecture?.trim()) {
     sharedSections.push(`Architecture: ${snippet(context.architecture, 320)}`);
   }
@@ -249,17 +252,17 @@ export function getActiveProject() {
   return getDb().prepare("SELECT * FROM projects WHERE is_active = 1 LIMIT 1").get();
 }
 
-export function createProject({ name, description = "", rootPath = "", mode = "manual" }) {
+export function createProject({ name, description = "", rootPath = "", githubLink = "", mode = "manual" }) {
   const db = getDb();
   const id = uuidv4();
   const shouldActivate = !getActiveProject();
 
   db.prepare(
     `
-      INSERT INTO projects (id, name, description, root_path, mode, is_active)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, description, root_path, github_link, mode, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `
-  ).run(id, name, description, rootPath, normalizeProjectMode(mode), shouldActivate ? 1 : 0);
+  ).run(id, name, description, rootPath, githubLink, normalizeProjectMode(mode), shouldActivate ? 1 : 0);
 
   db.prepare("INSERT INTO project_context (project_id) VALUES (?)").run(id);
 
@@ -281,6 +284,10 @@ export function updateProject(id, patch = {}) {
     patch.rootPath === undefined && patch.root_path === undefined
       ? current.root_path
       : String(patch.rootPath ?? patch.root_path ?? "").trim();
+  const nextGithubLink =
+    patch.githubLink === undefined && patch.github_link === undefined
+      ? current.github_link
+      : String(patch.githubLink ?? patch.github_link ?? "").trim();
   const nextMode = normalizeProjectMode(patch.mode ?? current.mode);
 
   getDb()
@@ -289,11 +296,12 @@ export function updateProject(id, patch = {}) {
       SET name = ?,
           description = ?,
           root_path = ?,
+          github_link = ?,
           mode = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `)
-    .run(nextName, nextDescription, nextRootPath, nextMode, id);
+    .run(nextName, nextDescription, nextRootPath, nextGithubLink, nextMode, id);
 
   return getProjectById(id);
 }

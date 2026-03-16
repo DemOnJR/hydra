@@ -14,10 +14,9 @@ const roles = [
 ];
 
 export function AgentSidebar({
-  agents,
+  agents = [],
   catalog = {},
-  loading,
-  queueCounts,
+  loading = false,
   onCreateAgent,
   onDeleteAgent,
   onUpdateAgentRole,
@@ -26,6 +25,7 @@ export function AgentSidebar({
   projectRoot = "",
   fullPage = false
 }) {
+
   const [showModal, setShowModal] = React.useState(false);
   const [name, setName] = React.useState("");
   const [platform, setPlatform] = React.useState(platforms[0].value);
@@ -181,12 +181,6 @@ export function AgentSidebar({
                     }`}>{agent.status}</span>
                   </div>
                 </div>
-                {queueCounts[agent.id] ? (
-                  <div className="shrink-0 bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded-lg flex items-center gap-1.5 animate-pulse shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    <span className="text-[10px] font-black uppercase tracking-tighter">{queueCounts[agent.id]}</span>
-                  </div>
-                ) : null}
               </div>
 
               <div className="grid gap-1.5">

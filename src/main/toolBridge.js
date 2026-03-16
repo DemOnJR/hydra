@@ -990,9 +990,14 @@ function normalizeRequestObject(raw) {
   return normalized;
 }
 
-function extractBalancedJsonValue(text) {
-  const objectIndex = text.indexOf("{");
-  const arrayIndex = text.indexOf("[");
+function extractBalancedJsonValue(text, searchOffset = 0) {
+  const source = String(text ?? "");
+  if (searchOffset >= source.length) {
+    return null;
+  }
+
+  const objectIndex = source.indexOf("{", searchOffset);
+  const arrayIndex = source.indexOf("[", searchOffset);
   let startIndex = -1;
 
   if (objectIndex === -1) {
@@ -1007,14 +1012,14 @@ function extractBalancedJsonValue(text) {
     return null;
   }
 
-  const opening = text[startIndex];
+  const opening = source[startIndex];
   const closing = opening === "[" ? "]" : "}";
   let depth = 0;
   let inString = false;
   let escaped = false;
 
-  for (let index = startIndex; index < text.length; index += 1) {
-    const char = text[index];
+  for (let index = startIndex; index < source.length; index += 1) {
+    const char = source[index];
 
     if (escaped) {
       escaped = false;
@@ -1041,27 +1046,74 @@ function extractBalancedJsonValue(text) {
       depth -= 1;
 
       if (depth === 0) {
-        return text.slice(startIndex, index + 1);
+        return {
+          value: source.slice(startIndex, index + 1),
+          startIndex,
+          endIndex: index + 1
+        };
       }
     }
   }
 
-  return null;
+  // If we found an opening bracket but it never closed, 
+  // we must return null so tryParseRequest can look past THIS opening bracket.
+  return {
+    value: null,
+    startIndex,
+    endIndex: startIndex + 1
+  };
 }
 
 function tryParseRequest(candidateText) {
-  if (!candidateText) {
+  if (!candidateText || !candidateText.trim()) {
     return null;
   }
 
-  const jsonText = extractBalancedJsonValue(candidateText.trim()) || candidateText.trim();
+  const text = candidateText.trim();
 
+  // 1. Try to parse the entire trimmed text as JSON (common for clean API responses)
   try {
-    const parsed = JSON.parse(jsonText);
-    return normalizeRequestObject(parsed);
+    const parsed = JSON.parse(text);
+    const normalized = normalizeRequestObject(parsed);
+    if (normalized) return normalized;
   } catch {
-    return null;
+    // Not a single JSON block, fall back to extraction
   }
+
+  // 2. Sequentially search for balanced blocks and try to parse them
+  let currentOffset = 0;
+  while (currentOffset < text.length) {
+    const result = extractBalancedJsonValue(text, currentOffset);
+    if (!result) {
+      break;
+    }
+
+    if (result.value) {
+      // Clean the potential JSON block:
+      // Strip common line number patterns (e.g. "1 {", "2   ")
+      // and other garbage that innerText() often picks up from formatted code blocks.
+      const cleaned = result.value
+        .split("\n")
+        .map((line) => line.replace(/^\s*\d+\s+/, "")) // Strip leading line numbers
+        .join("\n")
+        .trim();
+
+      try {
+        const parsed = JSON.parse(cleaned);
+        const normalized = normalizeRequestObject(parsed);
+        if (normalized) {
+          return normalized;
+        }
+      } catch {
+        // Not valid JSON, even after cleaning
+      }
+    }
+
+    // Advance past the start of the block we just tried (even if it wasn't balanced or valid)
+    currentOffset = result.startIndex + 1;
+  }
+
+  return null;
 }
 
 export function parseToolRequest(responseText) {
@@ -1090,7 +1142,17 @@ export function parseToolRequest(responseText) {
     }
   }
 
-  return tryParseRequest(text);
+  const fallback = tryParseRequest(text);
+  if (fallback) {
+    return fallback;
+  }
+
+  // Final loose attempt: look for anything that looks like "action":"..."
+  if (text.includes('"action"') || text.includes("'action'")) {
+    console.info("[Hydra] Detected potential tool call in text but failed to parse. Output was:\n" + text.slice(0, 500));
+  }
+
+  return null;
 }
 
 function summarizeRequest(request) {

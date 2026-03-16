@@ -5,22 +5,31 @@ import { ProjectHistoryPanel } from "./components/ProjectHistoryPanel.jsx";
 import { ProjectPanel } from "./components/ProjectPanel.jsx";
 import { ProjectSettings } from "./components/ProjectSettings.jsx";
 import { TaskBroadcast } from "./components/TaskBroadcast.jsx";
-import { TaskQueueViewer } from "./components/TaskQueueViewer.jsx";
 import { Tooltip } from "./components/Tooltip.jsx";
 import { useAgents } from "./hooks/useAgents.js";
 import { useProjectHistory } from "./hooks/useProjectHistory.js";
 import { useProjectTasks } from "./hooks/useProjectTasks.js";
 import { useProjects } from "./hooks/useProjects.js";
-import { useTaskManager } from "./hooks/useTaskManager.js";
 
 export default function App() {
   const [serverUrl, setServerUrl] = React.useState("");
   const [bootError, setBootError] = React.useState("");
   const [runtimeState, setRuntimeState] = React.useState({});
+  const [taskEvents, setTaskEvents] = React.useState([]);
   const [workspaceTab, setWorkspaceTab] = React.useState("orchestrator");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = React.useState(false);
   const workspaceTabsRef = React.useRef(null);
+
+  React.useEffect(() => {
+    return window.agentSync.onTaskEvent((event) => {
+      setTaskEvents((prev) => {
+        // Keep only the last 100 events to prevent memory leaks
+        const next = [...prev, event].slice(-100);
+        return next;
+      });
+    });
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -46,12 +55,6 @@ export default function App() {
   const agentState = useAgents(serverUrl);
   const projectTasks = useProjectTasks(serverUrl, projectState.activeProjectId);
   const projectHistory = useProjectHistory(serverUrl, projectState.activeProjectId);
-  const taskManager = useTaskManager({
-    activeProjectId: projectState.activeProjectId,
-    agents: agentState.agents,
-    markAgentStatus: agentState.markAgentStatus,
-    serverUrl
-  });
 
   const activeProject = projectState.projects.find(
     (project) => project.id === projectState.activeProjectId
@@ -131,6 +134,19 @@ export default function App() {
 
   if (!serverUrl) {
     return <main className="grid place-items-center min-h-screen text-zinc-500">Connecting to local services...</main>;
+  }
+
+  async function handleSendTask(agentId, task) {
+    const agent = agentState.agents.find(a => a.id === agentId);
+    if (!agent) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+
+    return window.agentSync.sendTaskToAgent(
+      agent,
+      projectState.activeProjectId,
+      task
+    );
   }
 
   return (
@@ -232,7 +248,6 @@ export default function App() {
                 { id: "orchestrator", label: "Orchestrator", icon: "💬" },
                 { id: "agents", label: "Agents", icon: "🤖" },
                 { id: "history", label: "History", icon: "📚" },
-                { id: "queue", label: "Queue", icon: "⏳" },
                 { id: "settings", label: "Settings", icon: "⚙️" }
               ].map(tab => (
                 <button
@@ -276,8 +291,8 @@ export default function App() {
               orchestratorAgent={orchestratorAgent}
               workerAgents={workerAgents}
               tasks={projectTasks.tasks}
-              taskEvents={taskManager.taskEvents}
-              onSendToAgent={taskManager.sendTask}
+              taskEvents={taskEvents}
+              onSendToAgent={handleSendTask}
             />
           ) : workspaceTab === "agents" ? (
             <div className="h-full overflow-y-auto custom-scrollbar pr-2">
@@ -285,9 +300,6 @@ export default function App() {
                 agents={agentState.agents}
                 catalog={agentState.catalog}
                 loading={agentState.loading}
-                queueCounts={Object.fromEntries(
-                  Object.entries(taskManager.taskQueues).map(([id, queue]) => [id, queue.length])
-                )}
                 onCreateAgent={agentState.createAgent}
                 onDeleteAgent={agentState.deleteAgent}
                 onUpdateAgentRole={agentState.updateAgentRole}
@@ -303,8 +315,6 @@ export default function App() {
               history={projectHistory}
               loading={projectHistory.loading}
             />
-          ) : workspaceTab === "queue" ? (
-            <TaskQueueViewer tasks={projectTasks.tasks} agents={agentState.agents} onClear={taskManager.clearAll} />
           ) : (
             <ProjectSettings
               activeProject={activeProject}
@@ -318,7 +328,6 @@ export default function App() {
       <BrowserSessions
         agents={agentState.agents}
         runtimeState={runtimeState}
-        taskQueues={taskManager.taskQueues}
         tasks={projectTasks.tasks}
         onOpenAgent={handleOpenAgent}
         onInspectAgent={handleInspectAgent}

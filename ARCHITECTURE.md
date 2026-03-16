@@ -59,7 +59,8 @@ src/renderer/
 `-- hooks/
     |-- useAgents.js
     |-- useProjects.js
-    `-- useTaskManager.js
+    |-- useProjectTasks.js
+    `-- useProjectHistory.js
 ```
 
 ### 3. Browser manager (Playwright + CDP)

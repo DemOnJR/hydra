@@ -32,6 +32,7 @@ export function initDb() {
       name TEXT NOT NULL,
       description TEXT DEFAULT '',
       root_path TEXT DEFAULT '',
+      github_link TEXT DEFAULT '',
       mode TEXT DEFAULT 'manual'
         CHECK (mode IN ('manual', 'semi-auto', 'full-auto')),
       is_active INTEGER DEFAULT 0,
@@ -129,8 +130,8 @@ export function initDb() {
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       mode TEXT NOT NULL
         CHECK (mode IN ('manual', 'semi-auto', 'full-auto')),
-      status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'running', 'waiting_approval', 'complete', 'error', 'stopped')),
+      status TEXT DEFAULT 'running'
+        CHECK (status IN ('running', 'waiting_approval', 'complete', 'error', 'stopped')),
       orchestrator_model TEXT NOT NULL,
       branch TEXT DEFAULT '',
       summary TEXT DEFAULT '',
@@ -219,6 +220,10 @@ export function initDb() {
 
   if (!projectColumns.includes("root_path")) {
     database.exec("ALTER TABLE projects ADD COLUMN root_path TEXT DEFAULT '';");
+  }
+
+  if (!projectColumns.includes("github_link")) {
+    database.exec("ALTER TABLE projects ADD COLUMN github_link TEXT DEFAULT '';");
   }
 
   if (!projectColumns.includes("mode")) {

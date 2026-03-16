@@ -91,7 +91,25 @@ async function readLastResponse(page, timeoutMs) {
 
     if ((await locator.count()) > 0) {
       await locator.waitFor({ state: "visible", timeout: timeoutMs });
-      return locator.innerText();
+      
+      // Stability check for streaming content
+      let lastText = "";
+      let lastChangedAt = Date.now();
+      const deadline = Date.now() + timeoutMs;
+
+      while (Date.now() < deadline) {
+        const currentText = await locator.innerText().catch(() => "");
+        if (currentText !== lastText) {
+          lastText = currentText;
+          lastChangedAt = Date.now();
+        } else if (Date.now() - lastChangedAt > 2000 && lastText.trim()) {
+          // Stable for 2 seconds and not empty
+          return lastText;
+        }
+        await page.waitForTimeout(500);
+      }
+
+      return lastText;
     }
   }
 

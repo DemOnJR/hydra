@@ -63,7 +63,6 @@ const CACHE_INVALIDATING_TOOL_ACTIONS = new Set([
   "delegate_task",
   "delegate_tasks"
 ]);
-const agentExecutionQueues = new Map();
 let restartScheduled = false;
 const temporarilyUnavailableAgents = new Map();
 const taskAiMetaByTaskId = new Map();
@@ -392,18 +391,6 @@ async function pickFallbackExecutionAgent({
   return null;
 }
 
-function enqueueAgentTask(agentId, runner) {
-  const previous = agentExecutionQueues.get(agentId) || Promise.resolve();
-  const next = previous.catch(() => {}).then(runner);
-  const tracked = next.finally(() => {
-    if (agentExecutionQueues.get(agentId) === tracked) {
-      agentExecutionQueues.delete(agentId);
-    }
-  });
-
-  agentExecutionQueues.set(agentId, tracked);
-  return tracked;
-}
 
 function isCacheableToolAction(action) {
   return CACHEABLE_TOOL_ACTIONS.has(String(action ?? "").trim());
@@ -828,7 +815,7 @@ async function continueWithToolBridge({
       } else {
         if (projectId && agent.role === "orchestrator") {
           emitTaskEvent(projectId, {
-            taskId: taskRecord.id,
+            taskId: taskId,
             agentId: agent.id,
             kind: "tool_start",
             label: agent.name,
@@ -861,7 +848,7 @@ async function continueWithToolBridge({
         );
         if (projectId && agent.role === "orchestrator") {
           emitTaskEvent(projectId, {
-            taskId: taskRecord.id,
+            taskId: taskId,
             agentId: agent.id,
             kind: "tool_done",
             label: agent.name,
@@ -890,7 +877,7 @@ async function continueWithToolBridge({
       );
       if (projectId && agent.role === "orchestrator") {
         emitTaskEvent(projectId, {
-          taskId: taskRecord.id,
+          taskId: taskId,
           agentId: agent.id,
           kind: "tool_error",
           label: agent.name,
@@ -956,9 +943,11 @@ async function executeAgentTask({
     userTask: task
   });
 
+  const taskId = taskRecord.id;
+
   if (projectId && agent.role === "orchestrator") {
     emitTaskEvent(projectId, {
-      taskId: taskRecord.id,
+      taskId: taskId,
       agentId: agent.id,
       kind: "user",
       label: "You",
@@ -986,7 +975,7 @@ async function executeAgentTask({
 
       if (projectId) {
         emitTaskEvent(projectId, {
-          taskId: taskRecord.id,
+          taskId: taskId,
           agentId: agent.id,
           kind: "system",
           label: "Hydra",
@@ -1010,7 +999,7 @@ async function executeAgentTask({
     if (!isAgentConnected) {
       console.info(`[Hydra] Agent ${activeExecutionAgent.name} appears offline before task execution. Attempting to wake up...`);
       emitTaskEvent(projectId, {
-        taskId: taskRecord.id,
+        taskId: taskId,
         agentId: agent.id,
         kind: "system",
         label: "Hydra",
@@ -1026,7 +1015,7 @@ async function executeAgentTask({
         });
         if (fallbackAgent) {
           emitTaskEvent(projectId, {
-            taskId: taskRecord.id,
+            taskId: taskId,
             agentId: agent.id,
             kind: "system",
             label: "Hydra",
@@ -1037,7 +1026,7 @@ async function executeAgentTask({
         throw new Error(`${activeExecutionAgent.name} is offline and could not be woken up. No fallback available.`);
       }
       emitTaskEvent(projectId, {
-        taskId: taskRecord.id,
+        taskId: taskId,
         agentId: agent.id,
         kind: "system",
         label: "Hydra",
@@ -1052,7 +1041,7 @@ async function executeAgentTask({
         agent,
         executionAgent: activeExecutionAgent,
         projectId,
-        taskId: taskRecord.id,
+        taskId: taskId,
         contextPayload,
         executionContext,
         initialPrompt: buildExecutionPrompt(activeExecutionAgent),
@@ -1089,7 +1078,7 @@ async function executeAgentTask({
         if (fallbackAgent) {
           if (projectId) {
             emitTaskEvent(projectId, {
-              taskId: taskRecord.id,
+              taskId: taskId,
               agentId: agent.id,
               kind: "system",
               label: "Hydra",
@@ -1110,12 +1099,12 @@ async function executeAgentTask({
   }
 
   try {
-    await updateTaskStatus(taskRecord.id, "sent");
-    await updateTaskStatus(taskRecord.id, "working");
+    await updateTaskStatus(taskId, "sent");
+    await updateTaskStatus(taskId, "working");
 
     if (projectId && agent.role === "orchestrator") {
       emitTaskEvent(projectId, {
-        taskId: taskRecord.id,
+        taskId: taskId,
         agentId: agent.id,
         kind: "system",
         label: agent.name,
@@ -1126,9 +1115,9 @@ async function executeAgentTask({
     const { bridgeResult, executionAgent: finalExecutionAgent } =
       await runWithExecutionAgent(executionAgent);
 
-    const aiMeta = taskAiMetaByTaskId.get(taskRecord.id) || null;
-    taskAiMetaByTaskId.delete(taskRecord.id);
-    await completeTask(taskRecord.id, bridgeResult.response, aiMeta ? normalizeTaskAiMeta(aiMeta) : null);
+    const aiMeta = taskAiMetaByTaskId.get(taskId) || null;
+    taskAiMetaByTaskId.delete(taskId);
+    await completeTask(taskId, bridgeResult.response, aiMeta ? normalizeTaskAiMeta(aiMeta) : null);
 
     if (!getAgentTemporaryUnavailability(agent.id)) {
       await updateAgentStatus(agent.id, "done");
@@ -1140,7 +1129,7 @@ async function executeAgentTask({
 
     if (projectId && agent.role === "orchestrator") {
       emitTaskEvent(projectId, {
-        taskId: taskRecord.id,
+        taskId: taskId,
         agentId: agent.id,
         kind: "assistant",
         label: agent.name,
@@ -1180,15 +1169,15 @@ async function executeAgentTask({
 
     return {
       success: true,
-      taskId: taskRecord.id,
+      taskId: taskId,
       response: bridgeResult.response,
       workspacePath: executionContext.workspacePath,
       branchName: executionContext.branchName,
       journalPath: executionContext.journalPath
     };
   } catch (error) {
-    taskAiMetaByTaskId.delete(taskRecord.id);
-    await updateTaskStatus(taskRecord.id, "error");
+    taskAiMetaByTaskId.delete(taskId);
+    await updateTaskStatus(taskId, "error");
     await updateAgentStatus(agent.id, "error");
 
     if (latestExecutionAgent.id !== agent.id) {
@@ -1197,7 +1186,7 @@ async function executeAgentTask({
 
     if (projectId && agent.role === "orchestrator") {
       emitTaskEvent(projectId, {
-        taskId: taskRecord.id,
+        taskId: taskId,
         agentId: agent.id,
         kind: "error",
         label: agent.name,
@@ -1221,7 +1210,7 @@ async function executeAgentTask({
 }
 
 export function runAgentTask(input) {
-  return enqueueAgentTask(input.agent.id, () => executeAgentTask(input));
+  return executeAgentTask(input);
 }
 
 export function registerIpcHandlers() {

@@ -2,18 +2,9 @@ import { v4 as uuidv4 } from "uuid";
 
 const agentStates = new Map();
 const commands = new Map();
-const queues = new Map();
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-function ensureQueue(agentId) {
-  if (!queues.has(agentId)) {
-    queues.set(agentId, []);
-  }
-
-  return queues.get(agentId);
 }
 
 function getCommandPublicShape(command) {
@@ -90,7 +81,6 @@ export function enqueueBridgeCommand({ agentId, type, payload = {} }) {
   };
 
   commands.set(id, command);
-  ensureQueue(agentId).push(id);
   return getCommandPublicShape(command);
 }
 
@@ -99,24 +89,16 @@ export function getBridgeCommand(commandId) {
 }
 
 export function getNextBridgeCommand(agentId) {
-  const queue = ensureQueue(agentId);
+  // Find the oldest pending command for this agent
+  const pending = [...commands.values()]
+    .filter(c => c.agentId === agentId && c.status === "pending")
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-  while (queue.length > 0) {
-    const commandId = queue[0];
-    const command = commands.get(commandId);
-
-    if (!command) {
-      queue.shift();
-      continue;
-    }
-
-    if (command.status === "pending") {
-      command.status = "dispatched";
-      command.updatedAt = nowIso();
-      return getCommandPublicShape(command);
-    }
-
-    queue.shift();
+  if (pending.length > 0) {
+    const command = pending[0];
+    command.status = "dispatched";
+    command.updatedAt = nowIso();
+    return getCommandPublicShape(command);
   }
 
   return null;
@@ -134,16 +116,6 @@ export function completeBridgeCommand(commandId, { ok, response = "", error = ""
   command.error = ok ? "" : String(error || "Bridge command failed.");
   command.meta = meta;
   command.updatedAt = nowIso();
-
-  const queue = ensureQueue(command.agentId);
-  if (queue[0] === commandId) {
-    queue.shift();
-  } else {
-    const index = queue.indexOf(commandId);
-    if (index >= 0) {
-      queue.splice(index, 1);
-    }
-  }
 
   return getCommandPublicShape(command);
 }

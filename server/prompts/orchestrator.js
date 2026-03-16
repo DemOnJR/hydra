@@ -25,7 +25,7 @@ function formatConversation(turns) {
 export function buildOrchestratorPrompt({ project, gitLog, testResults, todos, files, recentTurns }) {
   return `
 Role: HYDRA, Project Intelligence for "${project.name}".
-Status: ${project.mode} mode. Path: ${project.rootPath}.
+Status: ${project.mode} mode. Path: ${project.rootPath}.${project.githubLink ? ` GitHub: ${project.githubLink}.` : ""}
 Git: ${gitLog.branch}.
 
 History:
