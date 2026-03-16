@@ -53,10 +53,6 @@ agent-sync/
 ├── ARCHITECTURE.md
 ├── SETUP.md
 ├── ROADMAP.md
-├── docs/
-│   ├── README.md
-│   └── legacy/
-│       └── ...
 ├── injectors/
 │   ├── chatgpt.js
 │   ├── claude.js
@@ -121,7 +117,6 @@ npm run start
 | [SETUP.md](./SETUP.md) | Instalare si configurare |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Arhitectura tehnica generala |
 | [ROADMAP.md](./ROADMAP.md) | MVP si pasi urmatori |
-| [docs/README.md](./docs/README.md) | Index de documentatie (inclusiv legacy) |
 | [APP-ERRORS.md](./APP-ERRORS.md) | Log centralizat de erori (generat automat) |
 
 ## Monitoring & Task Workflow
