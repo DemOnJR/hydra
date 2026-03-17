@@ -781,6 +781,13 @@ function replaceText(projectRoot, filePath, oldString, newString) {
     throw new Error(`oldString not found in file: ${filePath}`);
   }
 
+  const occurrences = beforeSnapshot.content.split(from).length - 1;
+  if (occurrences > 1) {
+    throw new Error(
+      `replaceText: oldString appears ${occurrences} times in ${filePath}. Provide a more unique string to avoid ambiguous replacement.`
+    );
+  }
+
   const nextContent = beforeSnapshot.content.replace(from, to);
   const absolutePath = resolveProjectPath(projectRoot, filePath);
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
