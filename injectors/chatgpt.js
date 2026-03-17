@@ -14,7 +14,7 @@ async function getEditor(page) {
     const locator = page.locator(selector).first();
 
     try {
-      await locator.waitFor({ state: "visible", timeout: 5000 });
+      await locator.waitFor({ state: "visible", timeout: 360000 });
       return locator;
     } catch {
       continue;
@@ -123,49 +123,54 @@ export async function inject(page, prompt) {
 
 export async function waitForResponse(page, timeoutMs = 120000, options = {}) {
   const baselineResponseState = options.baselineResponseState ?? null;
+  const stopButton = page.locator(STOP_SELECTOR).first();
 
-  try {
-    await page.waitForSelector(STOP_SELECTOR, {
-      timeout: 10000
-    });
-  } catch {
+  // Phase 1: Wait for stop button to appear (generation started) — 15s window
+  const startDeadline = Date.now() + 15000;
+  while (Date.now() < startDeadline) {
+    const stopVisible = await stopButton.isVisible().catch(() => false);
+    if (stopVisible) break;
     if (baselineResponseState) {
-      return readNextResponse(page, timeoutMs, baselineResponseState);
+      const responseState = await captureResponseState(page);
+      if (hasResponseAdvanced(responseState, baselineResponseState)) break;
     }
-
-    return readLastResponse(page, timeoutMs);
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
+    await page.waitForTimeout(250).catch(() => {});
   }
 
-  await page.waitForSelector(STOP_SELECTOR, {
-    state: "detached",
-    timeout: timeoutMs
-  });
+  // Phase 2: Poll until stop button disappears (generation finished) — no deadline
+  let latestText = "";
+  let lastChangedAt = Date.now();
 
-  return readLastResponse(page, timeoutMs);
+  while (true) {
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
+
+    const responseState = await captureResponseState(page);
+    const currentText = String(responseState.lastText ?? "").trim();
+
+    if (currentText && currentText !== latestText) {
+      latestText = currentText;
+      lastChangedAt = Date.now();
+    }
+
+    const stopVisible = await stopButton.isVisible().catch(() => false);
+    const stableMs = Date.now() - lastChangedAt;
+
+    // Return when stop button gone and text stable for 1s
+    if (!stopVisible && latestText && stableMs >= 1000) {
+      return latestText;
+    }
+
+    await page.waitForTimeout(300).catch(() => {});
+  }
 }
 
 async function readLastResponse(page, timeoutMs) {
   const response = page.locator('[data-message-author-role="assistant"]').last();
   await response.waitFor({ state: "visible", timeout: timeoutMs });
   return response.innerText();
-}
-
-async function readNextResponse(page, timeoutMs, baselineResponseState) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    const responseState = await captureResponseState(page);
-
-    if (hasResponseAdvanced(responseState, baselineResponseState)) {
-      return responseState.lastText;
-    }
-
-    const isClosed = await page.isClosed().catch(() => true);
-    if (isClosed) break;
-    await page.waitForTimeout(500).catch(() => {});
-  }
-
-  throw new Error("[ChatGPT] No new response detected after sending the message.");
 }
 
 export async function isLoggedIn(page) {

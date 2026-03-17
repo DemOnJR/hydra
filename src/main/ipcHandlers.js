@@ -1189,12 +1189,15 @@ async function executeAgentTask({
     }
 
     if (projectId && agent.role === "orchestrator") {
+      const isBrowserClosed = error?.message?.startsWith("BROWSER_CLOSED:");
       emitTaskEvent(projectId, {
         taskId: taskId,
         agentId: agent.id,
         kind: "error",
         label: agent.name,
-        message: error.message
+        message: isBrowserClosed
+          ? "Agent browser was closed. Please reopen the browser session and retry."
+          : error.message
       });
     }
 

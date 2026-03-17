@@ -347,6 +347,14 @@ export async function waitForResponse(agentId, platform, timeoutMs = 120000, opt
   try {
     return await adapter.waitForResponse(session.page, timeoutMs, options);
   } catch (error) {
+    const msg = error?.message || "";
+    const pageClosed =
+      msg.includes("Target page, context or browser has been closed") ||
+      msg.includes("page.waitForTimeout") ||
+      (await session.page.isClosed().catch(() => true));
+    if (pageClosed) {
+      throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
+    }
     const availabilityMessage = await readAvailabilityMessageFromPage(session.page);
 
     if (availabilityMessage) {

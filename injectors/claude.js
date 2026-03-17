@@ -70,7 +70,7 @@ async function setEditorText(page, editor, text) {
   await editor.click();
 
   try {
-    await editor.fill(next, { timeout: 5000 });
+    await editor.fill(next, { timeout: 360000 });
     return;
   } catch {
     // Fall back to keyboard insertion.
@@ -347,71 +347,63 @@ export async function waitForResponse(page, timeoutMs = 120000, options = {}) {
 
   if (baselineResponseState) {
     return ensureResponseIsComplete(
-      await readNextResponse(page, timeoutMs, baselineResponseState, { includeStreaming: true })
+      await readNextResponse(page, baselineResponseState, { includeStreaming: true })
     );
   }
 
   return ensureResponseIsComplete(await readLastResponse(page, 5000, { includeStreaming: true }));
 }
 
-async function readNextResponse(page, timeoutMs, baselineResponseState, options = {}) {
+async function readNextResponse(page, baselineResponseState, options = {}) {
   const stopButton = page.locator(STOP_SELECTOR).first();
-  const deadline = Date.now() + timeoutMs;
-  let latestText = "";
-  let lastChangedAt = 0;
-  let sawAdvance = false;
 
-  while (Date.now() < deadline) {
+  // Phase 1: Wait for stop button to appear (generation started)
+  // Use a reasonable startup window — if it never appears, fall through
+  const startDeadline = Date.now() + 15000;
+  while (Date.now() < startDeadline) {
+    const stopVisible = await stopButton.isVisible().catch(() => false);
+    if (stopVisible) break;
     const responseState = await captureResponseState(page, options);
-    const currentText = String(
-      responseState.latestText || responseState.lastNonEmptyText || ""
-    ).trim();
-
-    if (hasResponseAdvanced(responseState, baselineResponseState)) {
-      sawAdvance = true;
-
-      if (currentText && currentText !== latestText) {
-        latestText = currentText;
-        lastChangedAt = Date.now();
-      }
-
-      const stopVisible = await stopButton.isVisible().catch(() => false);
-      const stableMs = lastChangedAt ? Date.now() - lastChangedAt : 0;
-
-      // 1. If the agent stopped typing, return whatever we have
-      if (sawAdvance && latestText && !stopVisible && stableMs >= 1000) {
-        return latestText;
-      }
-
-      // 2. If the agent is still typing (stop button is visible), 
-      // ONLY return early if we have a valid, complete Hydra request 
-      // AND it's been stable for a few seconds (to avoid race conditions with streaming)
-      if (latestText && stopVisible && hasCompleteHydraRequest(latestText) && stableMs >= 3000) {
-        return latestText;
-      }
-    }
-
+    if (hasResponseAdvanced(responseState, baselineResponseState)) break;
     const isClosed = await page.isClosed().catch(() => true);
-    if (isClosed) break;
-    await page.waitForTimeout(500).catch(() => {});
+    if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
+    await page.waitForTimeout(250).catch(() => {});
   }
 
-  if (latestText) {
-    return ensureResponseIsComplete(latestText);
-  }
+  // Phase 2: Poll until stop button disappears (generation finished)
+  // No deadline — just wait for the AI to finish, however long it takes
+  let latestText = "";
+  let lastChangedAt = Date.now();
 
-  if (sawAdvance) {
+  while (true) {
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
+
     const responseState = await captureResponseState(page, options);
     const currentText = String(
       responseState.latestText || responseState.lastNonEmptyText || ""
     ).trim();
 
-    if (currentText) {
-      return ensureResponseIsComplete(currentText);
+    if (currentText && currentText !== latestText) {
+      latestText = currentText;
+      lastChangedAt = Date.now();
     }
-  }
 
-  throw new Error("[Claude] No new response detected after sending the message.");
+    const stopVisible = await stopButton.isVisible().catch(() => false);
+    const stableMs = Date.now() - lastChangedAt;
+
+    // Return early if we have a complete Hydra request and it's been stable 2s
+    if (latestText && stopVisible && hasCompleteHydraRequest(latestText) && stableMs >= 2000) {
+      return latestText;
+    }
+
+    // Return when stop button gone and text has been stable for 1s
+    if (!stopVisible && latestText && stableMs >= 1000) {
+      return latestText;
+    }
+
+    await page.waitForTimeout(300).catch(() => {});
+  }
 }
 
 async function extractLocatorText(locator) {

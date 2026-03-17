@@ -27,7 +27,7 @@ async function getEditor(page) {
       const locator = page.locator(selector).first();
 
       try {
-        await locator.waitFor({ state: "visible", timeout: 1500 });
+        await locator.waitFor({ state: "visible", timeout: 360000 });
         return locator;
       } catch {
         continue;
@@ -62,62 +62,70 @@ export async function inject(page, prompt) {
   return true;
 }
 
+const STOP_SELECTORS = [
+  '[aria-label="Gemini is thinking"]',
+  ".loading-indicator",
+  'button[aria-label="Stop response"]'
+];
+
+const RESPONSE_SELECTORS = ["model-response", ".response-content", "message-content"];
+
 export async function waitForResponse(page, timeoutMs = 120000) {
-  const loadingSelectors = [
-    '[aria-label="Gemini is thinking"]',
-    ".loading-indicator",
-    'button[aria-label="Stop response"]'
-  ];
+  // Phase 1: Wait for a stop/loading indicator to appear (generation started) — 15s window
+  const startDeadline = Date.now() + 15000;
+  let stopSelector = null;
 
-  for (const selector of loadingSelectors) {
-    try {
-      await page.waitForSelector(selector, { timeout: 8000 });
-      await page.waitForSelector(selector, {
-        state: "detached",
-        timeout: timeoutMs
-      });
-      return readLastResponse(page, timeoutMs);
-    } catch {
-      continue;
+  outer: while (Date.now() < startDeadline) {
+    for (const selector of STOP_SELECTORS) {
+      const visible = await page.locator(selector).first().isVisible().catch(() => false);
+      if (visible) { stopSelector = selector; break outer; }
     }
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
+    await page.waitForTimeout(250).catch(() => {});
   }
 
-  return readLastResponse(page, timeoutMs);
-}
+  // Phase 2: Poll until all stop indicators are gone and response is stable — no deadline
+  let latestText = "";
+  let lastChangedAt = Date.now();
 
-async function readLastResponse(page, timeoutMs) {
-  const selectors = ["model-response", ".response-content", "message-content"];
+  while (true) {
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
 
-  for (const selector of selectors) {
-    const locator = page.locator(selector).last();
-
-    if ((await locator.count()) > 0) {
-      await locator.waitFor({ state: "visible", timeout: timeoutMs });
-      
-      // Stability check for streaming content
-      let lastText = "";
-      let lastChangedAt = Date.now();
-      const deadline = Date.now() + timeoutMs;
-
-      while (Date.now() < deadline) {
-        const currentText = await locator.innerText().catch(() => "");
-        if (currentText !== lastText) {
-          lastText = currentText;
-          lastChangedAt = Date.now();
-        } else if (Date.now() - lastChangedAt > 2000 && lastText.trim()) {
-          // Stable for 2 seconds and not empty
-          return lastText;
-        }
-        const isClosed = await page.isClosed().catch(() => true);
-    if (isClosed) break;
-    await page.waitForTimeout(500).catch(() => {});
+    // Read latest response text
+    let currentText = "";
+    for (const selector of RESPONSE_SELECTORS) {
+      const locator = page.locator(selector).last();
+      if ((await locator.count().catch(() => 0)) > 0) {
+        currentText = String(await locator.innerText().catch(() => "")).trim();
+        if (currentText) break;
       }
-
-      return lastText;
     }
-  }
 
-  throw new Error("[Gemini] Response not found.");
+    if (currentText && currentText !== latestText) {
+      latestText = currentText;
+      lastChangedAt = Date.now();
+    }
+
+    // Check if any loading/stop indicator is still visible
+    let stillLoading = false;
+    for (const selector of STOP_SELECTORS) {
+      if (await page.locator(selector).first().isVisible().catch(() => false)) {
+        stillLoading = true;
+        break;
+      }
+    }
+
+    const stableMs = Date.now() - lastChangedAt;
+
+    // Return when not loading and text stable for 1.5s
+    if (!stillLoading && latestText && stableMs >= 1500) {
+      return latestText;
+    }
+
+    await page.waitForTimeout(300).catch(() => {});
+  }
 }
 
 export async function isLoggedIn(page) {
