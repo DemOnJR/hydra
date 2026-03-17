@@ -216,6 +216,13 @@ export function replaceText(projectRoot, filePath, oldString, newString) {
     throw new Error(`Old string not found in file: ${filePath}`);
   }
 
+  const occurrences = content.split(oldString).length - 1;
+  if (occurrences > 1) {
+    throw new Error(
+      `replaceText: oldString appears ${occurrences} times in ${filePath}. Provide a more unique string to avoid ambiguous replacement.`
+    );
+  }
+
   const newContent = content.replace(oldString, newString);
   fs.writeFileSync(absolutePath, newContent, "utf8");
 

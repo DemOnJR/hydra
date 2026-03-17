@@ -268,7 +268,7 @@ async function ensurePlatformPage(session, platformUrl, options = {}) {
 export function isSessionConnected(agentId) {
   const session = activeSessions.get(agentId);
   if (!session) {
-    return true;
+    return false;
   }
   return session.browser?.isConnected() === true;
 }
