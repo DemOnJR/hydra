@@ -1,26 +1,26 @@
-# Setup - AgentSync
+# Setup - Hydra
 
-## Cerinte
+## Requirements
 
-| Componenta | Minim |
+| Component | Minimum |
 |---|---|
 | Node.js | 20+ |
 | npm | 9+ |
-| Browser | Chrome, Chromium sau Edge instalat |
+| Browser | Chrome, Chromium, or Edge installed |
 | OS | Windows 10+, macOS 12+, Ubuntu 20.04+ |
 
-## Instalare
+## Installation
 
 ```bash
 npm install
 npm run db:init
 ```
 
-Playwright este folosit cu browserul real al sistemului.
+Playwright is used with the system's real browser.
 
-Nu este necesar sa descarci browserele Playwright daca folosesti Chrome/Edge deja instalat.
+You do not need to download Playwright browsers if you already have Chrome/Edge installed.
 
-## Variabile de mediu
+## Environment variables
 
 `.env.example`
 
@@ -49,7 +49,7 @@ Notes:
 - `DB_PATH` overrides only the SQLite file location.
 - API keys stay in the OS keychain via `keytar`, not in the repo.
 
-## Rulare
+## Running
 
 Development:
 
@@ -57,25 +57,25 @@ Development:
 npm run dev
 ```
 
-Productie locala:
+Local production:
 
 ```bash
 npm run build:renderer
 npm run start
 ```
 
-## Primul login pentru un agent
+## First login for an agent
 
-1. Pornesti AgentSync.
-2. Creezi proiectul.
-3. Creezi agentul.
-4. Apesi `Open browser`.
-5. Se deschide browserul real controlat de Playwright.
-6. Faci login manual normal.
-7. Apesi `Check session` in AgentSync.
-8. Dupa asta poti trimite task-uri.
+1. Start Hydra.
+2. Create a project.
+3. Create an agent.
+4. Press `Open browser`.
+5. A real browser controlled by Playwright opens.
+6. Log in manually as usual.
+7. Press `Check session` in Hydra.
+8. After that you can send tasks.
 
-## Structura utila
+## Useful structure
 
 ```text
 src/main/chromeFinder.js
@@ -87,33 +87,33 @@ injectors/gemini.js
 
 ## Troubleshooting
 
-### Browserul nu este gasit
+### Browser not found
 
-Verifica sa ai instalat:
+Make sure you have one of the following installed:
 - Google Chrome
 - Chromium
 - Microsoft Edge
 
-### `better-sqlite3` are eroare de ABI
+### `better-sqlite3` ABI error
 
-Ruleaza:
+Run:
 
 ```bash
 npm install
 ```
 
-si porneste aplicatia prin scripturile proiectului, nu cu runtime-uri amestecate.
+and start the application through the project scripts, not with mixed runtimes.
 
-### Login-ul nu trece
+### Login not working
 
-Nu mai folosim `webview`.
+We no longer use `webview`.
 
-Daca o platforma refuza in continuare login-ul:
-- foloseste browserul real deschis de Playwright
-- dezactiveaza VPN/proxy daca exista
-- incearca alta retea
-- actualizeaza browserul sistemului
+If a platform still refuses login:
+- use the real browser opened by Playwright
+- disable VPN/proxy if present
+- try a different network
+- update your system browser
 
-### Selectorii de injectie s-au stricat
+### Injection selectors broken
 
-Actualizeaza adaptorul platformei din `injectors/*.js`.
+Update the platform adapter in `injectors/*.js`.

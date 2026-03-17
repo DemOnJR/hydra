@@ -1,27 +1,27 @@
-# Arhitectura Tehnica - AgentSync
+# Technical Architecture - Hydra
 
-## Stack tehnic
+## Tech stack
 
-| Layer | Tehnologie | Motiv |
+| Layer | Technology | Reason |
 |---|---|---|
-| Desktop app | Electron | UI local, IPC, integrare OS |
-| Browser automation | Playwright + browser real | login compatibil, sesiuni persistente, control robust |
-| Frontend UI | React + Vite | iteratie rapida si componentizare |
-| Context Server | Node.js + Express | REST API + MCP local |
-| Baza de date | SQLite + better-sqlite3 | local-first, simplu, rapid |
-| MCP | @modelcontextprotocol/sdk | integrare cu Claude Code, Codex, Cursor |
+| Desktop app | Electron | Local UI, IPC, OS integration |
+| Browser automation | Playwright + real browser | Compatible login, persistent sessions, robust control |
+| Frontend UI | React + Vite | Fast iteration and componentization |
+| Context Server | Node.js + Express | REST API + local MCP |
+| Database | SQLite + better-sqlite3 | Local-first, simple, fast |
+| MCP | @modelcontextprotocol/sdk | Integration with Claude Code, Codex, Cursor |
 
-## Componente principale
+## Main components
 
 ### 1. Electron main process
 
-Responsabilitati:
-- porneste Context Server-ul local
-- creeaza fereastra principala
-- expune IPC pentru renderer
-- delega operatiile browserului catre Playwright
+Responsibilities:
+- starts the local Context Server
+- creates the main window
+- exposes IPC for the renderer
+- delegates browser operations to Playwright
 
-Fisiere cheie:
+Key files:
 
 ```text
 src/main/
@@ -38,14 +38,14 @@ src/main/
 
 ### 2. Renderer process
 
-Responsabilitati:
-- management proiecte
-- management agenti
-- control sesiuni browser
-- broadcast task-uri
-- vizualizare raspunsuri si salvare in KB
+Responsibilities:
+- project management
+- agent management
+- browser session control
+- task broadcasting
+- response visualization and saving to KB
 
-Fisiere cheie:
+Key files:
 
 ```text
 src/renderer/
@@ -65,63 +65,62 @@ src/renderer/
 
 ### 3. Browser manager (Playwright + CDP)
 
-Modelul curent:
-- browser real Chrome/Edge/Chromium lansat ca proces separat (`spawn`)
-- conexiune prin CDP (Chrome DevTools Protocol) pentru control
-- profile directories izolate per agent pe disk (stochează login, cookies)
-- fiecare agent are fereastra lui reală de browser controlată automat
-- bypass mai bun pentru Cloudflare Turnstile și captchas prin folosirea browserului sistemului
-- agenții "Blocked" pot fi deblocați manual prin "Check session" dacă sunt logați.
+Current model:
+- real Chrome/Edge/Chromium browser launched as a separate process (`spawn`)
+- connection via CDP (Chrome DevTools Protocol) for control
+- isolated profile directories per agent on disk (stores login, cookies)
+- each agent has its own real browser window controlled automatically
+- better bypass for Cloudflare Turnstile and captchas by using the system browser
+- "Blocked" agents can be unblocked manually via "Check session" if logged in
 
-## Fluxuri
+## Flows
 
-### Adaugare agent
-
-```text
-User creeaza agent
-  -> agentul este salvat in SQLite
-  -> AgentSync poate deschide sesiunea lui in browser real
-  -> user face login manual
-  -> Playwright salveaza storage state pe disk
-```
-
-### Broadcast task
+### Adding an agent
 
 ```text
-User scrie task in UI
-  -> Context Server returneaza knowledge base-ul proiectului
-  -> main process construieste promptul complet
-  -> Playwright injecteaza promptul in browserul agentului
-  -> Playwright asteapta finalul raspunsului
-  -> raspunsul este salvat in DB si afisat in Electron
+User creates agent
+  -> agent is saved in SQLite
+  -> Hydra can open its session in a real browser
+  -> user logs in manually
+  -> Playwright saves storage state to disk
 ```
 
-### Salvare in knowledge base
+### Broadcasting a task
 
 ```text
-ResponseCollector afiseaza raspunsul
-  -> user alege "Save to KB"
-  -> Context Server salveaza decizia in SQLite
-  -> task-urile viitoare folosesc contextul actualizat
+User writes task in UI
+  -> Context Server returns the project knowledge base
+  -> main process builds the full prompt
+  -> Playwright injects the prompt into the agent's browser
+  -> Playwright waits for the end of the response
+  -> response is saved in DB and displayed in Electron
 ```
 
-## De ce Playwright si nu webview
+### Saving to knowledge base
 
-- browserul real trece mai bine de challenge-uri de login
-- selectorii si actiunile sunt mai robuste decat `executeJavaScript` raw
-- sesiunile pot fi persistate fara sa randam paginile in Electron
-- Electron ramane usor: control plane, nu browser host
+```text
+ResponseCollector displays the response
+  -> user chooses "Save to KB"
+  -> Context Server saves the decision in SQLite
+  -> future tasks use the updated context
+```
 
-## Trade-off-uri
+## Why Playwright and not webview
 
-- ferestrele browserului sunt separate de fereastra Electron
-- login-ul initial este manual
-- adaptarile pe selectorii platformelor tot trebuie mentinute cand UI-ul se schimba
+- the real browser passes login challenges more reliably
+- selectors and actions are more robust than raw `executeJavaScript`
+- sessions can be persisted without rendering pages in Electron
+- Electron stays lightweight: control plane, not a browser host
 
-## Securitate
+## Trade-offs
 
-- comunicarea intre UI si server ramane pe localhost
-- datele stau local
-- sesiunile browser sunt separate per agent
-- Electron nu mai embedeaza site-uri third-party in UI
+- browser windows are separate from the Electron window
+- initial login is manual
+- platform selector adaptations still need to be maintained when the UI changes
 
+## Security
+
+- communication between UI and server stays on localhost
+- data is stored locally
+- browser sessions are isolated per agent
+- Electron no longer embeds third-party sites in the UI

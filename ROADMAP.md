@@ -1,41 +1,41 @@
-# Roadmap — AgentSync
+# Roadmap — Hydra
 
-## MVP curent
+## Current MVP
 
-- [x] Electron UI local
-- [x] Context Server local cu SQLite
-- [x] MCP endpoint pentru CLI agents
-- [x] Agenti persistati in DB
-- [x] Migrare de la `webview` la Playwright
-- [x] Lansare browser real pentru sesiuni AI
-- [x] Broadcast task-uri catre agenti
-- [x] Colectare raspunsuri in UI
-- [x] Tool bridge Hydra (read/write/run cu aprobare)
-- [x] UI redesign dark mode complet (CSS variables)
-- [x] Layout 3 coloane (left rail / workspace / right sidebar)
-- [x] Modal `New project` cu folder picker nativ Windows
-- [x] Browser Sessions sidebar compact cu status dot animat si task curent
+- [x] Local Electron UI
+- [x] Local Context Server with SQLite
+- [x] MCP endpoint for CLI agents
+- [x] Agents persisted in DB
+- [x] Migration from `webview` to Playwright
+- [x] Launch real browser for AI sessions
+- [x] Broadcast tasks to agents
+- [x] Collect responses in UI
+- [x] Hydra tool bridge (read/write/run with approval)
+- [x] Full dark mode UI redesign (CSS variables)
+- [x] 3-column layout (left rail / workspace / right sidebar)
+- [x] `New project` modal with native Windows folder picker
+- [x] Compact Browser Sessions sidebar with animated status dot and current task
 - [x] IPC `select-folder` via `dialog.showOpenDialog`
 
-## Urmatorii pasi
+## Next steps
 
-- [ ] Detectie login mai robusta per platforma
-- [ ] Retry / cancel pentru task-uri lungi
-- [ ] Indicator de progres per task in sidebar (procent / pasi)
-- [ ] Buton `Open all agents` (lanseaza toate sesiunile dintr-o data)
-- [ ] Notificari desktop cand un agent termina un task
-- [ ] Istoric sesiuni browser per agent
+- [ ] More robust login detection per platform
+- [ ] Retry / cancel for long-running tasks
+- [ ] Per-task progress indicator in sidebar (percentage / steps)
+- [ ] `Open all agents` button (launches all sessions at once)
+- [ ] Desktop notifications when an agent finishes a task
+- [ ] Browser session history per agent
 - [ ] Export / import knowledge base
-- [ ] Packaging Windows (electron-builder)
+- [ ] Windows packaging (electron-builder)
 - [ ] Auto-update
-- [ ] Browser extension pentru integrare mai usoara
+- [ ] Browser extension for easier integration
 
-## Riscuri tehnice
+## Technical risks
 
-| Risc | Nivel | Mitigare |
+| Risk | Level | Mitigation |
 |---|---|---|
-| UI-ul platformelor se schimba | ridicat | adaptoare Playwright per platforma in `injectors/*.js` |
-| Browserul nu este gasit pe sistem | mediu | `chromeFinder.js` cu fallback Chrome / Edge / Chromium |
-| Cloudflare sau login checks mai stricte | mediu | browser real, login manual, sesiuni persistente |
-| Selectori instabili la injectie | ridicat | actualizare rapida in `injectors/*.js` |
-| Tool bridge bucla infinita | mediu | detectie request repetat + limita MAX_IDENTICAL_TOOL_REQUESTS |
+| Platform UI changes | high | Playwright adapters per platform in `injectors/*.js` |
+| Browser not found on system | medium | `chromeFinder.js` with Chrome / Edge / Chromium fallback |
+| Stricter Cloudflare or login checks | medium | Real browser, manual login, persistent sessions |
+| Unstable injection selectors | high | Fast update cycle in `injectors/*.js` |
+| Tool bridge infinite loop | medium | Repeated request detection + MAX_IDENTICAL_TOOL_REQUESTS limit |

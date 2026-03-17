@@ -1,16 +1,16 @@
-# AgentSync — Multi-AI Agent Orchestrator
+# Hydra — Multi-AI Agent Orchestrator
 
-Aplicatie desktop care coordoneaza mai multi agenti AI (ChatGPT, Gemini, Claude) prin sesiuni reale de browser controlate prin CDP (Chrome DevTools Protocol) cu Playwright, context partajat si task management local.
+Desktop application that coordinates multiple AI agents (ChatGPT, Gemini, Claude) through real browser sessions controlled via CDP (Chrome DevTools Protocol) with Playwright, shared context, and local task management.
 
-## Ce face
+## What it does
 
-- Lanseaza browsere reale (Chrome / Edge) per agent via CDP
-- Injecteaza prompt-uri si colecteaza raspunsuri automat (bypass Cloudflare)
-- Gestioneaza proiecte, knowledge base si task-uri local (SQLite)
-- Expune un Context Server REST + MCP pentru agenti CLI
-- UI Electron dark-mode cu layout 3 coloane
+- Launches real browsers (Chrome / Edge) per agent via CDP
+- Injects prompts and collects responses automatically (bypasses Cloudflare)
+- Manages projects, knowledge base, and tasks locally (SQLite)
+- Exposes a REST Context Server + MCP for CLI agents
+- Electron dark-mode UI with 3-column layout
 
-## UI — layout curent
+## UI — current layout
 
 ```text
 ┌─────────────┬──────────────────────┬───────────────┐
@@ -23,12 +23,12 @@ Aplicatie desktop care coordoneaza mai multi agenti AI (ChatGPT, Gemini, Claude)
 └─────────────┴──────────────────────┴───────────────┘
 ```
 
-**Functionalitati UI notabile:**
-- Buton `New project` deschide un modal cu campuri name, description, root folder (Windows folder picker nativ), mode
-- Browser Sessions apar in sidebar-ul din dreapta — fiecare agent are un status dot animat (idle / working / done / error) si task-ul curent vizibil
-- Dark mode complet cu CSS variables
+**Notable UI features:**
+- `New project` button opens a modal with name, description, root folder (native Windows folder picker), and mode fields
+- Browser Sessions appear in the right sidebar — each agent has an animated status dot (idle / working / done / error) and the current task visible
+- Full dark mode with CSS variables
 
-## Arhitectura
+## Architecture
 
 ```text
 Electron UI (Renderer — React)
@@ -37,7 +37,7 @@ Electron Main
   -> ipcHandlers.js      (get-config, open-agent, inspect-agent, send-task, save-decisions, select-folder)
   -> playwrightManager.js
   -> toolBridge.js       (Hydra tool bridge)
-  -> serverProcess.js    (porneste Context Server)
+  -> serverProcess.js    (starts Context Server)
 
 Context Server (Express + SQLite + MCP)
   -> routes/projects, agents, tasks, sessions, settings, ai, context, todos
@@ -45,7 +45,7 @@ Context Server (Express + SQLite + MCP)
   -> orchestrator/sessionRunner, executor, contextBuilder, safetyGuards
 ```
 
-## Structura proiectului
+## Project structure
 
 ```text
 agent-sync/
@@ -68,19 +68,19 @@ agent-sync/
 └── src/
     ├── main/
     │   ├── index.js
-    │   ├── ipcHandlers.js      ← select-folder dialog adăugat
+    │   ├── ipcHandlers.js      ← select-folder dialog added
     │   ├── playwrightManager.js
     │   ├── toolBridge.js
     │   ├── windowManager.js
     │   └── ...
     ├── preload/
-    │   └── preload.cjs         ← selectFolder expus
+    │   └── preload.cjs         ← selectFolder exposed
     └── renderer/
-        ├── App.jsx              ← layout 3 coloane
-        ├── styles.css           ← dark mode complet
+        ├── App.jsx              ← 3-column layout
+        ├── styles.css           ← full dark mode
         └── components/
-            ├── ProjectPanel.jsx ← modal New Project + folder picker
-            ├── BrowserSessions.jsx ← sidebar compact cu status
+            ├── ProjectPanel.jsx ← New Project modal + folder picker
+            ├── BrowserSessions.jsx ← compact sidebar with status
             ├── AgentSidebar.jsx
             ├── TaskBroadcast.jsx
             ├── ResponseCollector.jsx
@@ -95,40 +95,40 @@ npm run db:init
 npm run dev
 ```
 
-Build productie:
+Production build:
 
 ```bash
 npm run build:renderer
 npm run start
 ```
 
-## Flux de lucru
+## Workflow
 
-1. Apesi **New project** → completezi numele, descrierea, selectezi root folder din Windows, alegi modul.
-2. Adaugi agenti din left rail.
-3. In sidebar-ul din dreapta apesi **Open browser** per agent si faci login manual.
-4. Trimiti task-uri din TaskBroadcast — agentii apar cu status `working` si task-ul curent vizibil.
-5. Raspunsurile apar in ResponseCollector; le salvezi in knowledge base.
+1. Press **New project** → fill in name, description, select root folder from Windows, choose mode.
+2. Add agents from the left rail.
+3. In the right sidebar press **Open browser** per agent and log in manually.
+4. Send tasks from TaskBroadcast — agents appear with status `working` and the current task visible.
+5. Responses appear in ResponseCollector; save them to the knowledge base.
 
-## Documentatie
+## Documentation
 
-| Fisier | Rol |
+| File | Role |
 |---|---|
-| [SETUP.md](./SETUP.md) | Instalare si configurare |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Arhitectura tehnica generala |
-| [ROADMAP.md](./ROADMAP.md) | MVP si pasi urmatori |
-| [APP-ERRORS.md](./APP-ERRORS.md) | Log centralizat de erori (generat automat) |
+| [SETUP.md](./SETUP.md) | Installation and configuration |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | General technical architecture |
+| [ROADMAP.md](./ROADMAP.md) | MVP and next steps |
+| [APP-ERRORS.md](./APP-ERRORS.md) | Centralized error log (auto-generated) |
 
 ## Monitoring & Task Workflow
 
 ### Task Workflow (Retry & Templates)
-- **Retry**: Dacă un task eșuează, poți apăsa butonul **Retry** direct în chat-ul Orchestratorului pentru a retrimite solicitarea.
-- **Templates**: Folosește butonul **Templates** din panoul de info al Orchestratorului pentru a încărca prompt-uri predefinite (ex: Project Audit).
-- **Cleanup la pornire**: Aplicația curăță automat task-urile "blocate" (care au rămas în starea working după un crash) și resetează agenții.
+- **Retry**: If a task fails, you can press the **Retry** button directly in the Orchestrator chat to resubmit the request.
+- **Templates**: Use the **Templates** button in the Orchestrator info panel to load predefined prompts (e.g. Project Audit).
+- **Cleanup on startup**: The app automatically cleans up "stuck" tasks (those left in the working state after a crash) and resets agents.
 
-### Monitorizarea Erorilor
-Pentru a monitoriza sănătatea aplicației și a colecta erorile într-un singur loc:
+### Error Monitoring
+To monitor application health and collect errors in one place:
 ```bash
 npm run monitor:errors
 ```
-Acest script va genera sau actualiza fișierul `APP-ERRORS.md` cu toate erorile recente din log-urile sesiunilor.
+This script will generate or update the `APP-ERRORS.md` file with all recent errors from session logs.

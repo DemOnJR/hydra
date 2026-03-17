@@ -76,7 +76,7 @@ async function confirmSendStarted(page, baselineResponseState, timeoutMs = 10000
       return true;
     }
 
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(250).catch(() => {});
   }
 
   return false;
@@ -89,7 +89,7 @@ export async function inject(page, prompt) {
   await editor.click();
   await clearEditor(editor);
   await editor.fill(prompt);
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(250).catch(() => {});
 
   const sendSelectors = [
     'button[data-testid="send-button"]',
@@ -160,7 +160,9 @@ async function readNextResponse(page, timeoutMs, baselineResponseState) {
       return responseState.lastText;
     }
 
-    await page.waitForTimeout(500);
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) break;
+    await page.waitForTimeout(500).catch(() => {});
   }
 
   throw new Error("[ChatGPT] No new response detected after sending the message.");

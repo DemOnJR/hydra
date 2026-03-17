@@ -23,6 +23,7 @@ import {
 import {
   completeTask,
   createTask,
+  fetchAgent,
   fetchAgents,
   fetchContext,
   getAppSettings,
@@ -39,6 +40,7 @@ import {
   parseToolRequest,
   requestToolApproval
 } from "./toolBridge.js";
+import { callAI } from "../../server/ai/caller.js";
 
 const MAX_IDENTICAL_TOOL_REQUESTS = 3;
 const CACHEABLE_TOOL_ACTIONS = new Set([
@@ -438,16 +440,18 @@ async function inspectAgentSession(agentId, platform) {
   }
 
   if (state.loggedIn) {
-    const agent = getAgentById(agentId);
-    if (agent?.status === "error") {
-      await updateAgentStatus(agentId, "done");
+    try {
+      const agent = await fetchAgent(agentId);
+      if (agent?.status === "error") {
+        await updateAgentStatus(agentId, "done");
+      }
+    } catch (err) {
+      console.warn(`[Hydra] Could not fetch agent ${agentId} after session inspection.`, err);
     }
   }
 
   return state;
 }
-
-import { callAI } from "../../server/ai/caller.js";
 
 async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = null, projectId = null, history = [], task = null) {
   if (agent.platform === "ollama" || agent.platform === "google" || agent.platform === "local") {

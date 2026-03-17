@@ -34,7 +34,9 @@ async function getEditor(page) {
       }
     }
 
-    await page.waitForTimeout(500);
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) break;
+    await page.waitForTimeout(500).catch(() => {});
   }
 
   throw new Error("[Gemini] Prompt editor not found.");
@@ -45,7 +47,7 @@ export async function inject(page, prompt) {
   const editor = await getEditor(page);
   await editor.click();
   await editor.fill(prompt);
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(300).catch(() => {});
 
   for (const selector of SEND_SELECTORS) {
     const button = page.locator(selector).first();
@@ -106,7 +108,9 @@ async function readLastResponse(page, timeoutMs) {
           // Stable for 2 seconds and not empty
           return lastText;
         }
-        await page.waitForTimeout(500);
+        const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) break;
+    await page.waitForTimeout(500).catch(() => {});
       }
 
       return lastText;

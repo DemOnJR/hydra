@@ -42,6 +42,10 @@ export function fetchAgents() {
   return request("/api/agents");
 }
 
+export function fetchAgent(agentId) {
+  return request(`/api/agents/${agentId}`);
+}
+
 export function saveDecisions(projectId, decisions) {
   return request(`/api/context/${projectId}/decisions/bulk`, {
     method: "POST",

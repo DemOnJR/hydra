@@ -3,6 +3,7 @@ import { MODEL_CATALOG } from "../ai/modelConfig.js";
 import {
   createAgent,
   deleteAgent,
+  getAgentById,
   getAllAgents,
   updateAgentName,
   updateAgentRole,
@@ -14,6 +15,15 @@ const router = Router();
 
 router.get("/", (_req, res) => {
   res.json(getAllAgents());
+});
+
+router.get("/:id", (req, res) => {
+  const agent = getAgentById(req.params.id);
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found." });
+    return;
+  }
+  res.json(agent);
 });
 
 router.get("/catalog", (_req, res) => {

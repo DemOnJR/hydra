@@ -146,7 +146,9 @@ async function confirmSendStarted(page, baselineResponseState, timeoutMs = 12000
       return true;
     }
 
-    await page.waitForTimeout(250);
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) break;
+    await page.waitForTimeout(250).catch(() => {});
   }
 
   return false;
@@ -309,7 +311,7 @@ export async function inject(page, prompt) {
   await editor.click();
   await clearEditor(page, editor);
   await setEditorText(page, editor, prompt);
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(250).catch(() => {});
 
   const sendSelectors = [
     'button[aria-label="Send Message"]',
@@ -389,7 +391,9 @@ async function readNextResponse(page, timeoutMs, baselineResponseState, options 
       }
     }
 
-    await page.waitForTimeout(500);
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) break;
+    await page.waitForTimeout(500).catch(() => {});
   }
 
   if (latestText) {
@@ -477,7 +481,9 @@ async function readLastResponse(page, timeoutMs, options = {}) {
       return text;
     }
 
-    await page.waitForTimeout(500);
+    const isClosed = await page.isClosed().catch(() => true);
+    if (isClosed) break;
+    await page.waitForTimeout(500).catch(() => {});
   }
 
   throw new Error("[Claude] Response not found.");
