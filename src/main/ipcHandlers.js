@@ -30,7 +30,8 @@ import {
   getServerBaseUrl,
   saveDecisions,
   updateAgentStatus,
-  updateTaskStatus
+  updateTaskStatus,
+  callAiOnServer
 } from "./serverClient.js";
 import {
   executeToolRequest,
@@ -40,7 +41,6 @@ import {
   parseToolRequest,
   requestToolApproval
 } from "./toolBridge.js";
-import { callAI } from "../../server/ai/caller.js";
 
 const MAX_IDENTICAL_TOOL_REQUESTS = 3;
 const CACHEABLE_TOOL_ACTIONS = new Set([
@@ -242,7 +242,7 @@ function extractTemporaryUnavailableMessage(value) {
 
 function parseTemporaryUnavailableUntil(message) {
   const text = String(message ?? "");
-  const match = text.match(/\buntil\s+(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)\b/i);
+  const match = text.match(/\b(?:until|at|reset at)\s+(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)\b/i);
 
   if (!match) {
     return 0;
@@ -302,6 +302,7 @@ function markAgentTemporarilyUnavailable(agentId, message) {
   };
 
   temporarilyUnavailableAgents.set(agentId, nextEntry);
+  updateAgentStatus(agentId, "sleeping").catch(() => {});
   return nextEntry;
 }
 
@@ -310,6 +311,10 @@ function clearAgentTemporaryUnavailability(agentId) {
 }
 
 async function checkAgentBridgeConnection(agentId, platform) {
+  if (platform === "local" || platform === "ollama" || platform === "google") {
+    return true;
+  }
+
   if (platform === "gemini") {
     return isGeminiSessionConnected(agentId);
   }
@@ -430,6 +435,14 @@ async function openAgentSession(agentId, platform) {
 }
 
 async function inspectAgentSession(agentId, platform) {
+  if (platform === "local" || platform === "ollama" || platform === "google") {
+    return {
+      loggedIn: true,
+      bridgeConnected: true,
+      busy: false
+    };
+  }
+
   const platformUrl = getPlatformUrl(platform);
 
   let state;
@@ -480,23 +493,25 @@ async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = nul
     const messages = [...history, { role: "user", content: prompt }];
 
     let accumulatedText = "";
-    const result = await callAI({
+    const result = await callAiOnServer({
       model,
       systemPrompt,
       messages,
-      onToken: (token) => {
-        accumulatedText += token;
+      stream: true
+    }, (msg) => {
+      if (msg.type === "token") {
+        accumulatedText += msg.token;
         if (taskId && projectId) {
           emitTaskEvent(projectId, {
             taskId,
             agentId: agent.id,
             kind: "neural_streaming",
             label: agent.name,
-            message: accumulatedText // This will update the UI in real-time
+            message: accumulatedText
           });
         }
-      },
-      onProgress: (info) => {
+      } else if (msg.type === "progress") {
+        const info = msg.info;
         if (taskId && projectId && info.status === "progress") {
           const progress = info.progress || 0;
           const file = info.file || "weights";

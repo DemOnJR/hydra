@@ -35,6 +35,7 @@ function deriveAgentActivity(agent, runtimeState, tasks = []) {
     );
 
   if (agent.status === "error") return "error";
+  if (agent.status === "sleeping") return "limit";
 
   if (snapshot.activeTask) {
     if (agent.role === "orchestrator") return hasDelegatedWorkers ? "syncing" : "thinking";
@@ -55,6 +56,7 @@ function getActivityLabel(activity) {
     case "talking": return "replying";
     case "syncing": return "handoff";
     case "error": return "blocked";
+    case "limit": return "limit reached";
     case "sleep":
     default: return "sleeping";
   }
@@ -122,11 +124,13 @@ export function BrowserSessions({
           const visualStatus =
             agent.status === "error"
               ? "error"
-              : snapshot.activeTask
-                ? "working"
-                : awaitingReply || isRecent(snapshot.latestTask?.completed_at, 10000)
-                  ? "done"
-                  : "idle";
+              : agent.status === "sleeping"
+                ? "limited"
+                : snapshot.activeTask
+                  ? "working"
+                  : awaitingReply || isRecent(snapshot.latestTask?.completed_at, 10000)
+                    ? "done"
+                    : "idle";
 
           const statusText =
             snapshot.activeTask && activeTaskText
@@ -176,7 +180,9 @@ export function BrowserSessions({
                             ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
                             : visualStatus === "error"
                               ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]"
-                              : "bg-zinc-600"
+                              : visualStatus === "limited"
+                                ? "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+                                : "bg-zinc-600"
                       }`}
                     />
                   </div>

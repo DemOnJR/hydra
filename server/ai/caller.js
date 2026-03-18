@@ -256,16 +256,18 @@ async function ensureOllamaRunning() {
     // Not running
   }
 
-  console.info("[Ollama] Attempting to auto-start Ollama...");
+  console.info("[Ollama] Ollama is not running. Attempting to start it automatically...");
   
   const possiblePaths = [
     path.join(process.env.LOCALAPPDATA, "Programs", "Ollama", "ollama app.exe"),
+    path.join(process.env.ProgramFiles, "Ollama", "ollama app.exe"),
     "ollama"
   ];
 
   let started = false;
   for (const p of possiblePaths) {
     try {
+      // Use 'serve' command to start the background engine
       const child = spawn(p, ["serve"], {
         detached: true,
         stdio: "ignore",
@@ -273,6 +275,7 @@ async function ensureOllamaRunning() {
       });
       child.unref();
       started = true;
+      console.info(`[Ollama] Launched from: ${p}`);
       break;
     } catch (e) {
       continue;
@@ -280,13 +283,14 @@ async function ensureOllamaRunning() {
   }
 
   if (started) {
-    // Wait for it to wake up
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 2000));
+    console.info("[Ollama] Waiting for engine to initialize...");
+    // Wait up to 20 seconds for it to wake up
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 1000));
       try {
         const response = await fetch(healthURL);
         if (response.ok) {
-          console.info("[Ollama] Ollama started successfully.");
+          console.info("[Ollama] Engine is ready.");
           return true;
         }
       } catch (e) {}

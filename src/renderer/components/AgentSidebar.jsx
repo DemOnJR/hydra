@@ -211,14 +211,19 @@ export function AgentSidebar({
                 )}
                 
                 {((agent.platform === "local" || agent.platform === "ollama") && (!catalog[agent.platform]?.includes(agent.specialty) && agent.specialty !== "")) && (
-                  <input
-                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2 text-xs text-zinc-300 focus:border-indigo-500/50 focus:bg-zinc-900 outline-none w-full placeholder:text-zinc-700 transition-all shadow-inner mt-1"
-                    defaultValue={agent.specialty || ""}
-                    placeholder="Enter custom model name..."
-                    onBlur={(event) =>
-                      onUpdateAgentSpecialty(agent.id, event.target.value.trim())
-                    }
-                  />
+                  <>
+                    <input
+                      className="bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2 text-xs text-zinc-300 focus:border-indigo-500/50 focus:bg-zinc-900 outline-none w-full placeholder:text-zinc-700 transition-all shadow-inner mt-1"
+                      defaultValue={agent.specialty || ""}
+                      placeholder={agent.platform === "local" ? "Hugging Face repo (e.g. Qwen/Qwen3.5-0.8B)" : "Ollama model name..."}
+                      onBlur={(event) =>
+                        onUpdateAgentSpecialty(agent.id, event.target.value.trim())
+                      }
+                    />
+                    {agent.platform === "local" && (
+                      <span className="text-[8px] text-zinc-500 mt-0.5 ml-1">Example: Qwen/Qwen3.5-0.8B</span>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -386,14 +391,18 @@ export function AgentSidebar({
                       <option value="custom">+ Use custom model...</option>
                     </select>
                     {(!catalog[platform]?.includes(specialty) && specialty !== "") && (
-                      <input
-                        className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
-                        value={specialty === "custom" ? "" : specialty}
-                        onChange={(event) => setSpecialty(event.target.value)}
-                        placeholder="Enter custom model name..."
-                      />
-                    )}
-                  </div>
+                      <>
+                        <input
+                          className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"
+                          value={specialty === "custom" ? "" : specialty}
+                          onChange={(event) => setSpecialty(event.target.value)}
+                          placeholder={platform === "local" ? "Hugging Face repo (e.g. Qwen/Qwen3.5-0.8B)" : "Ollama model name..."}
+                        />
+                        {platform === "local" && (
+                          <span className="text-[10px] text-zinc-500 mt-1 ml-1">Example: Qwen/Qwen3.5-0.8B</span>
+                        )}
+                      </>
+                    )}                  </div>
                 ) : (
                   <input
                     className="w-full bg-zinc-950 border border-white/5 rounded-[5px] px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 outline-none placeholder:text-zinc-700 transition-all shadow-inner"

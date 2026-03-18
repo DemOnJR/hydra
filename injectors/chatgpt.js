@@ -134,7 +134,7 @@ export async function waitForResponse(page, timeoutMs = 120000, options = {}) {
       const responseState = await captureResponseState(page);
       if (hasResponseAdvanced(responseState, baselineResponseState)) break;
     }
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
     await page.waitForTimeout(250).catch(() => {});
   }
@@ -144,7 +144,7 @@ export async function waitForResponse(page, timeoutMs = 120000, options = {}) {
   let lastChangedAt = Date.now();
 
   while (true) {
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
 
     const responseState = await captureResponseState(page);

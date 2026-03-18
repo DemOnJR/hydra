@@ -84,3 +84,64 @@ export function updateAgentStatus(agentId, status) {
 export function getAppSettings() {
   return request("/api/settings");
 }
+
+export function callAiOnServer(payload, onMessage = null) {
+  if (payload.stream && typeof onMessage === "function") {
+    // Return a promise that resolves when the stream ends
+    return new Promise(async (resolve, reject) => {
+      try {
+        const response = await fetch(`${getServerBaseUrl()}/api/ai/call`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(LOCAL_SECRET ? { Authorization: `Bearer ${LOCAL_SECRET}` } : {})
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          reject(new Error(err.error || "Stream request failed"));
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const msg = JSON.parse(line.slice(6));
+                if (msg.type === "done") {
+                  resolve(msg.result);
+                } else if (msg.type === "error") {
+                  reject(new Error(msg.error));
+                } else {
+                  onMessage(msg);
+                }
+              } catch (e) {
+                // Ignore parse errors for partial lines
+              }
+            }
+          }
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  return request("/api/ai/call", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}

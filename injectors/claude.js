@@ -146,7 +146,7 @@ async function confirmSendStarted(page, baselineResponseState, timeoutMs = 12000
       return true;
     }
 
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) break;
     await page.waitForTimeout(250).catch(() => {});
   }
@@ -354,6 +354,29 @@ export async function waitForResponse(page, timeoutMs = 120000, options = {}) {
   return ensureResponseIsComplete(await readLastResponse(page, 5000, { includeStreaming: true }));
 }
 
+async function checkForUsageLimit(page) {
+  return page.evaluate(() => {
+    const text = document.body.innerText;
+    const limitPatterns = [
+      "free message limit",
+      "hit your limit for Claude messages",
+      "out of free messages"
+    ];
+
+    for (const pattern of limitPatterns) {
+      if (text.includes(pattern)) {
+        const resetMatch = text.match(/(?:reset|until)\s+(?:at\s+)?(\d{1,2}:\d{2}\s*[AP]M)/i);
+        let errorMsg = `USAGE_LIMIT_REACHED: Claude limit hit.`;
+        if (resetMatch) {
+          errorMsg += ` Reset at ${resetMatch[1]}.`;
+        }
+        return errorMsg;
+      }
+    }
+    return null;
+  });
+}
+
 async function readNextResponse(page, baselineResponseState, options = {}) {
   const stopButton = page.locator(STOP_SELECTOR).first();
 
@@ -361,11 +384,14 @@ async function readNextResponse(page, baselineResponseState, options = {}) {
   // Use a reasonable startup window — if it never appears, fall through
   const startDeadline = Date.now() + 15000;
   while (Date.now() < startDeadline) {
+    const usageLimit = await checkForUsageLimit(page);
+    if (usageLimit) throw new Error(usageLimit);
+
     const stopVisible = await stopButton.isVisible().catch(() => false);
     if (stopVisible) break;
     const responseState = await captureResponseState(page, options);
     if (hasResponseAdvanced(responseState, baselineResponseState)) break;
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
     await page.waitForTimeout(250).catch(() => {});
   }
@@ -376,7 +402,10 @@ async function readNextResponse(page, baselineResponseState, options = {}) {
   let lastChangedAt = Date.now();
 
   while (true) {
-    const isClosed = await page.isClosed().catch(() => true);
+    const usageLimit = await checkForUsageLimit(page);
+    if (usageLimit) throw new Error(usageLimit);
+
+    const isClosed = page.isClosed();
     if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
 
     const responseState = await captureResponseState(page, options);
@@ -467,13 +496,16 @@ async function readLastResponse(page, timeoutMs, options = {}) {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
+    const usageLimit = await checkForUsageLimit(page);
+    if (usageLimit) throw new Error(usageLimit);
+
     const text = await tryReadLatestResponse(page, options);
 
     if (text) {
       return text;
     }
 
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) break;
     await page.waitForTimeout(500).catch(() => {});
   }

@@ -14,8 +14,61 @@ import {
   saveApiKey
 } from "../ai/keyManager.js";
 import { getAiSettings, updateAiSettings } from "../db/queries.js";
+import { callAI } from "../ai/caller.js";
 
 const router = Router();
+
+router.post("/call", async (req, res) => {
+  const { model, systemPrompt, messages, tools, responseFormat, stream } = req.body ?? {};
+
+  if (!model) {
+    res.status(400).json({ error: "Model is required." });
+    return;
+  }
+
+  if (stream) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    try {
+      const result = await callAI({
+        model,
+        systemPrompt,
+        messages,
+        tools,
+        responseFormat,
+        onToken: (token) => {
+          res.write(`data: ${JSON.stringify({ type: "token", token })}\n\n`);
+        },
+        onProgress: (info) => {
+          res.write(`data: ${JSON.stringify({ type: "progress", info })}\n\n`);
+        }
+      });
+      res.write(`data: ${JSON.stringify({ type: "done", result })}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error("[AI Route] Stream failed:", error);
+      res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+      res.end();
+    }
+    return;
+  }
+
+  try {
+    const result = await callAI({
+      model,
+      systemPrompt,
+      messages,
+      tools,
+      responseFormat
+    });
+    res.json(result);
+  } catch (error) {
+    console.error("[AI Route] Call failed:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 router.get("/", async (_req, res) => {
   try {

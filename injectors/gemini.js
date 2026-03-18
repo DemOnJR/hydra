@@ -34,7 +34,7 @@ async function getEditor(page) {
       }
     }
 
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) break;
     await page.waitForTimeout(500).catch(() => {});
   }
@@ -80,7 +80,7 @@ export async function waitForResponse(page, timeoutMs = 120000) {
       const visible = await page.locator(selector).first().isVisible().catch(() => false);
       if (visible) { stopSelector = selector; break outer; }
     }
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
     await page.waitForTimeout(250).catch(() => {});
   }
@@ -90,7 +90,7 @@ export async function waitForResponse(page, timeoutMs = 120000) {
   let lastChangedAt = Date.now();
 
   while (true) {
-    const isClosed = await page.isClosed().catch(() => true);
+    const isClosed = page.isClosed();
     if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
 
     // Read latest response text
