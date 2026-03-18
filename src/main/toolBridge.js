@@ -736,7 +736,7 @@ function parsePatchTouchedPaths(patchText) {
 }
 
 function writeFile(projectRoot, filePath, content) {
-  const nextContent = String(content ?? "");
+  const nextContent = String(content ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
   if (nextContent.length > MAX_FILE_WRITE_CHARS) {
     throw new Error(`File content too large (${nextContent.length} chars).`);
@@ -757,8 +757,8 @@ function writeFile(projectRoot, filePath, content) {
 }
 
 function replaceText(projectRoot, filePath, oldString, newString) {
-  const from = String(oldString ?? "");
-  const to = String(newString ?? "");
+  const from = String(oldString ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const to = String(newString ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
   if (!from) {
     throw new Error("oldString is required.");

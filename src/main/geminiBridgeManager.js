@@ -9,14 +9,14 @@ const DEBUG_PORT_BASE = 9333;
 const DEBUG_PORT_RANGE = 1000;
 const activeSessions = new Map();
 const TEMPORARY_UNAVAILABLE_PATTERNS = [
-  /out of free messages/i,
-  /free messages until/i,
-  /message limit/i,
-  /usage limit/i,
-  /quota exceeded/i,
-  /rate limit exceeded/i,
-  /too many messages/i,
-  /try again later/i
+  /\bout of free messages\b/i,
+  /\bfree messages until\b/i,
+  /\bmessage limit\b/i,
+  /\busage limit\b/i,
+  /\bquota exceeded\b/i,
+  /\brate limit exceeded\b/i,
+  /\btoo many messages\b/i,
+  /\btry again later\b/i
 ];
 
 function sleep(ms) {

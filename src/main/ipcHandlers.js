@@ -69,14 +69,14 @@ let restartScheduled = false;
 const temporarilyUnavailableAgents = new Map();
 const taskAiMetaByTaskId = new Map();
 const TEMPORARY_UNAVAILABLE_PATTERNS = [
-  /out of free messages/i,
-  /free messages until/i,
-  /message limit/i,
-  /usage limit/i,
-  /quota exceeded/i,
-  /rate limit exceeded/i,
-  /too many messages/i,
-  /try again later/i
+  /\bout of free messages\b/i,
+  /\bfree messages until\b/i,
+  /\bmessage limit\b/i,
+  /\busage limit\b/i,
+  /\bquota exceeded\b/i,
+  /\brate limit exceeded\b/i,
+  /\btoo many messages\b/i,
+  /\btry again later\b/i
 ];
 
 function emitTaskEvent(projectId, payload) {
@@ -537,15 +537,16 @@ async function sendPromptAndWait(agent, prompt, timeoutMs = 240000, taskId = nul
       });
     }
 
-    return result.text;
+    return String(result.text ?? "").replace(/\r/g, "");
   }
 
   if (agent.platform === "gemini") {
-    return sendGeminiPrompt(agent.id, prompt, timeoutMs);
+    return String((await sendGeminiPrompt(agent.id, prompt, timeoutMs)) ?? "").replace(/\r/g, "");
   }
 
   const injectResult = await injectPrompt(agent.id, agent.platform, prompt);
-  return waitForResponse(agent.id, agent.platform, timeoutMs, injectResult || {});
+  const response = await waitForResponse(agent.id, agent.platform, timeoutMs, injectResult || {});
+  return String(response ?? "").replace(/\r/g, "");
 }
 
 async function prepareExecutionContext(agent, contextPayload) {
