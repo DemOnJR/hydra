@@ -5,7 +5,7 @@ Desktop application that coordinates multiple AI agents (ChatGPT, Gemini, Claude
 ## What it does
 
 - Launches real browsers (Chrome / Edge) per agent via CDP
-- Injects prompts and collects responses automatically (bypasses Cloudflare)
+- Injects prompts and collects responses automatically
 - Manages projects, knowledge base, and tasks locally (SQLite)
 - Exposes a REST Context Server + MCP for CLI agents
 - Electron dark-mode UI with 3-column layout
