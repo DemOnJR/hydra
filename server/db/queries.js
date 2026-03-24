@@ -14,7 +14,7 @@ const SESSION_STATUSES = [
 ];
 const SESSION_DECISIONS = ["pending", "approved", "rejected"];
 const AGENT_ROLES = ["orchestrator", "worker"];
-const APPROVAL_MODES = ["manual", "auto"];
+const APPROVAL_MODES = ["manual", "semi-auto", "auto"];
 
 function normalizeWhitespace(value) {
   return String(value ?? "")
@@ -585,8 +585,19 @@ export function createTask({ projectId = null, agentId, prompt, userTask }) {
 
   getDb()
     .prepare(`
-      INSERT INTO tasks (id, project_id, agent_id, prompt, user_task)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO tasks (
+        id,
+        project_id,
+        agent_id,
+        prompt,
+        user_task,
+        workflow_state,
+        verification_status,
+        required_evidence,
+        required_verification,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, 'todo', 'pending', 1, 0, datetime('now'))
     `)
     .run(id, projectId, agentId, prompt, userTask);
 
@@ -618,7 +629,7 @@ export function getTaskById(id) {
 }
 
 export function updateTaskStatus(id, status) {
-  getDb().prepare("UPDATE tasks SET status = ? WHERE id = ?").run(status, id);
+  getDb().prepare("UPDATE tasks SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
   return getTaskById(id);
 }
 
@@ -629,7 +640,9 @@ export function completeTask(id, response) {
       SET
         response = ?,
         status = 'complete',
-        completed_at = datetime('now')
+        completed_at = datetime('now'),
+        workflow_state = 'complete',
+        updated_at = datetime('now')
       WHERE id = ?
     `)
     .run(response, id);
@@ -673,12 +686,14 @@ export function completeTaskWithMeta(id, response, meta = {}) {
           response = ?,
           status = 'complete',
           completed_at = datetime('now'),
+          workflow_state = 'complete',
           model = ?,
           provider = ?,
           prompt_tokens = ?,
           completion_tokens = ?,
           total_tokens = ?,
-          cost_usd = ?
+          cost_usd = ?,
+          updated_at = datetime('now')
         WHERE id = ?
       `
     )

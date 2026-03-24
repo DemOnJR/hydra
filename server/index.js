@@ -3,12 +3,15 @@ import cors from "cors";
 import { pathToFileURL } from "node:url";
 import express from "express";
 import { loadApiKeys } from "./ai/keyManager.js";
+import { bootstrapCoreRuntime } from "./core/bootstrap.js";
+import { shutdownProcessManager } from "./core/processManager.js";
 import { closeDb, initDb } from "./db/schema.js";
 import { shutdownSessions } from "./orchestrator/sessionRunner.js";
 import agentsRouter from "./routes/agents.js";
 import aiRouter from "./routes/ai.js";
 import browserBridgeRouter from "./routes/browserBridge.js";
 import contextRouter from "./routes/context.js";
+import coreRouter from "./routes/core.js";
 import projectsRouter from "./routes/projects.js";
 import sessionsRouter from "./routes/sessions.js";
 import settingsRouter from "./routes/settings.js";
@@ -39,6 +42,8 @@ function authorizeRequest(req, res) {
 
 function buildServer() {
   initDb();
+  const bootstrap = bootstrapCoreRuntime();
+  console.info("[Core] Runtime bootstrap", bootstrap);
   void loadApiKeys().catch((error) => {
     console.warn(`[AI] API key preload failed: ${error.message}`);
   });
@@ -86,6 +91,7 @@ function buildServer() {
   app.use("/api/sessions", sessionsRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/todos", todosRouter);
+  app.use("/api/core", coreRouter);
 
   registerMcpRoutes(app, authorizeRequest);
 
@@ -98,9 +104,24 @@ export function startServer() {
   }
 
   const app = buildServer();
-  serverInstance = app.listen(PORT, HOST, () => {
+  const instance = app.listen(PORT, HOST, () => {
     console.log(`[Context Server] Listening at http://${HOST}:${PORT}`);
   });
+
+  instance.on("error", (error) => {
+    if (error?.code === "EADDRINUSE") {
+      console.error(
+        `[Context Server] Port ${PORT} is already in use. Close the previous Hydra server (or free the port) and restart.`
+      );
+      process.exit(1);
+      return;
+    }
+
+    console.error("[Context Server] Failed to start", error);
+    process.exit(1);
+  });
+
+  serverInstance = instance;
 
   return serverInstance;
 }
@@ -108,8 +129,9 @@ export function startServer() {
 export function stopServer(callback) {
   Promise.resolve()
     .then(() => shutdownSessions())
+    .then(() => shutdownProcessManager())
     .catch((error) => {
-      console.error("[Orchestrator] Session shutdown failed", error);
+      console.error("[Core] Shutdown failed", error);
     })
     .finally(() => {
       if (!serverInstance) {

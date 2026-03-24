@@ -347,7 +347,10 @@ export async function waitForResponse(page, timeoutMs = 120000, options = {}) {
 
   if (baselineResponseState) {
     return ensureResponseIsComplete(
-      await readNextResponse(page, baselineResponseState, { includeStreaming: true })
+      await readNextResponse(page, baselineResponseState, {
+        includeStreaming: true,
+        timeoutMs
+      })
     );
   }
 
@@ -379,11 +382,16 @@ async function checkForUsageLimit(page) {
 
 async function readNextResponse(page, baselineResponseState, options = {}) {
   const stopButton = page.locator(STOP_SELECTOR).first();
+  const baselineText = String(
+    baselineResponseState?.lastNonEmptyText || baselineResponseState?.latestText || ""
+  ).trim();
+  const hardTimeoutMs = Math.max(30000, Number(options.timeoutMs) || 180000);
+  const hardDeadline = Date.now() + hardTimeoutMs;
 
   // Phase 1: Wait for stop button to appear (generation started)
   // Use a reasonable startup window — if it never appears, fall through
   const startDeadline = Date.now() + 15000;
-  while (Date.now() < startDeadline) {
+  while (Date.now() < startDeadline && Date.now() < hardDeadline) {
     const usageLimit = await checkForUsageLimit(page);
     if (usageLimit) throw new Error(usageLimit);
 
@@ -402,6 +410,10 @@ async function readNextResponse(page, baselineResponseState, options = {}) {
   let lastChangedAt = Date.now();
 
   while (true) {
+    if (Date.now() >= hardDeadline) {
+      throw new Error("[Claude] Timed out waiting for the next response.");
+    }
+
     const usageLimit = await checkForUsageLimit(page);
     if (usageLimit) throw new Error(usageLimit);
 
@@ -409,9 +421,14 @@ async function readNextResponse(page, baselineResponseState, options = {}) {
     if (isClosed) throw new Error("BROWSER_CLOSED: The agent browser was closed during the task.");
 
     const responseState = await captureResponseState(page, options);
-    const currentText = String(
-      responseState.latestText || responseState.lastNonEmptyText || ""
-    ).trim();
+    const currentLatest = String(responseState.latestText || "").trim();
+    const currentFallback = String(responseState.lastNonEmptyText || "").trim();
+    const currentText =
+      currentLatest && currentLatest !== baselineText
+        ? currentLatest
+        : currentFallback && currentFallback !== baselineText
+          ? currentFallback
+          : "";
 
     if (currentText && currentText !== latestText) {
       latestText = currentText;
@@ -448,7 +465,11 @@ async function extractLocatorText(locator) {
     const responseRoot =
       clone.querySelector(".font-claude-response .standard-markdown") ||
       clone.querySelector(".font-claude-response") ||
-      clone;
+      clone.querySelector('[class*="font-claude-response"]');
+
+    if (!responseRoot) {
+      return "";
+    }
 
     return responseRoot.textContent?.trim() || "";
   });

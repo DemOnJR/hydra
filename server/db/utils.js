@@ -4,7 +4,7 @@ export const TODO_PRIORITIES = ["low", "medium", "high", "critical"];
 export const SESSION_STATUSES = ["running", "waiting_approval", "complete", "error", "stopped"];
 export const SESSION_DECISIONS = ["pending", "approved", "rejected"];
 export const AGENT_ROLES = ["orchestrator", "worker"];
-export const APPROVAL_MODES = ["manual", "auto"];
+export const APPROVAL_MODES = ["manual", "semi-auto", "auto"];
 
 export function normalizeWhitespace(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();

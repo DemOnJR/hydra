@@ -50,9 +50,10 @@ Context Server (Express + SQLite + MCP)
 ```text
 agent-sync/
 ├── README.md
-├── ARCHITECTURE.md
 ├── SETUP.md
 ├── ROADMAP.md
+├── docs/
+│   └── obsidian/            ← linked project map (Graph View ready)
 ├── injectors/
 │   ├── chatgpt.js
 │   ├── claude.js
@@ -115,7 +116,9 @@ npm run start
 | File | Role |
 |---|---|
 | [SETUP.md](./SETUP.md) | Installation and configuration |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | General technical architecture |
+| [docs/obsidian/README.md](./docs/obsidian/README.md) | Obsidian vault for architecture + code navigation |
+| [docs/obsidian/00 - Start Here.md](./docs/obsidian/00%20-%20Start%20Here.md) | Main entry point for humans and AI |
+| [docs/obsidian/02 - Where To Look.md](./docs/obsidian/02%20-%20Where%20To%20Look.md) | Task-based "where to edit" map |
 | [ROADMAP.md](./ROADMAP.md) | MVP and next steps |
 | [APP-ERRORS.md](./APP-ERRORS.md) | Centralized error log (auto-generated) |
 

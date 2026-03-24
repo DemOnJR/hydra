@@ -22,6 +22,11 @@ if not exist "node_modules" (
   )
 )
 
+echo [SETUP] Releasing stale local ports if needed...
+for %%P in (3847 5175) do (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$port=%%P; $procIds = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; foreach($procId in $procIds){ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue; if($proc -and ($proc.ProcessName -match '^(node|electron)$')) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue; Write-Host ('[SETUP] Released port ' + $port + ' from PID ' + $procId); } }"
+)
+
 echo [SETUP] Initializing database...
 call npm run db:init
 if errorlevel 1 (

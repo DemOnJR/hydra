@@ -10,9 +10,11 @@ const DEBUG_PORT_BASE = 9550;
 const DEBUG_PORT_RANGE = 1000;
 const activeSessions = new Map();
 const TEMPORARY_UNAVAILABLE_PATTERNS = [
+  /usage_limit_reached/i,
   /\bout of free messages\b/i,
   /\bfree messages until\b/i,
   /\bmessage limit\b/i,
+  /\blimit hit\b/i,
   /\busage limit\b/i,
   /\bquota exceeded\b/i,
   /\brate limit exceeded\b/i,
@@ -38,9 +40,19 @@ function extractTemporaryUnavailableMessage(value) {
     return "";
   }
 
-  return TEMPORARY_UNAVAILABLE_PATTERNS.some((pattern) => pattern.test(text))
-    ? text.slice(0, 240)
-    : "";
+  for (const pattern of TEMPORARY_UNAVAILABLE_PATTERNS) {
+    const match = text.match(pattern);
+    if (!match) {
+      continue;
+    }
+
+    const index = match.index ?? 0;
+    const start = Math.max(0, index - 80);
+    const end = Math.min(text.length, index + 220);
+    return text.slice(start, end).trim();
+  }
+
+  return "";
 }
 
 async function readAvailabilityMessageFromPage(page) {

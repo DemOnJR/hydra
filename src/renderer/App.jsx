@@ -142,11 +142,17 @@ export default function App() {
       throw new Error(`Agent not found: ${agentId}`);
     }
 
-    return window.agentSync.sendTaskToAgent(
+    const result = await window.agentSync.sendTaskToAgent(
       agent,
       projectState.activeProjectId,
       task
     );
+
+    if (result && result.success === false) {
+      throw new Error(result.error || "Task execution failed.");
+    }
+
+    return result;
   }
 
   return (

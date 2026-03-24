@@ -21,14 +21,40 @@ import {
   readAgentJournal
 } from "./projectWorkspace.js";
 import {
+  captureCorePreview,
   completeTask,
   createTask,
+  createCoreCapabilityGap,
+  createCoreEnvironment,
+  createCoreReviewIssue,
+  deleteCoreSecret,
+  describeCoreEnvironment,
+  describeCoreTool,
+  detectCoreEnvironment,
+  ensureCoreRuntime,
   fetchAgent,
   fetchAgents,
   fetchContext,
+  finalizeCoreToolCall,
   getAppSettings,
+  injectCoreSecret,
+  installCoreDependencies,
+  listCoreCapabilityGaps,
+  listCoreProcesses,
+  listCoreSecretRefs,
+  listCoreTools,
+  listCoreToolVersions,
+  prepareCoreToolCall,
+  readCoreProcessOutput,
+  restartCoreProcess,
+  runCoreTaskVerification,
+  activateCoreEnvironment,
+  setCoreSecret,
+  startCoreProcess,
+  stopCoreProcess,
   getServerBaseUrl,
   saveDecisions,
+  transitionCoreTaskState,
   updateAgentStatus,
   updateTaskStatus,
   callAiOnServer
@@ -50,6 +76,15 @@ const CACHEABLE_TOOL_ACTIONS = new Set([
   "read_file_lines",
   "read_files",
   "batch_actions",
+  "read_process_output",
+  "list_processes",
+  "detect_environment",
+  "describe_environment",
+  "list_tools",
+  "describe_tool",
+  "list_tool_versions",
+  "list_capability_gaps",
+  "list_secret_refs",
   "rebuild_app",
   "reload_app",
   "restart_app"
@@ -59,19 +94,34 @@ const CACHE_INVALIDATING_TOOL_ACTIONS = new Set([
   "write_file",
   "replace",
   "run_command",
+  "start_process",
+  "stop_process",
+  "restart_process",
+  "install_dependencies",
+  "set_secret",
+  "delete_secret",
   "rebuild_app",
   "reload_app",
   "restart_app",
   "delegate_task",
   "delegate_tasks"
 ]);
+const LOCAL_ONLY_TOOL_ACTIONS = new Set([
+  "delegate_task",
+  "delegate_tasks",
+  "rebuild_app",
+  "reload_app",
+  "restart_app"
+]);
 let restartScheduled = false;
 const temporarilyUnavailableAgents = new Map();
 const taskAiMetaByTaskId = new Map();
 const TEMPORARY_UNAVAILABLE_PATTERNS = [
+  /usage_limit_reached/i,
   /\bout of free messages\b/i,
   /\bfree messages until\b/i,
   /\bmessage limit\b/i,
+  /\blimit hit\b/i,
   /\busage limit\b/i,
   /\bquota exceeded\b/i,
   /\brate limit exceeded\b/i,
@@ -227,6 +277,205 @@ function appendHydraChangeSummary(response, changeMap) {
   }
 
   return text ? `${text}\n\n${summary}` : summary;
+}
+
+function getRequestArg(request, key, fallback = undefined) {
+  if (request?.[key] !== undefined) {
+    return request[key];
+  }
+
+  if (request?.args && typeof request.args === "object" && request.args[key] !== undefined) {
+    return request.args[key];
+  }
+
+  return fallback;
+}
+
+function normalizeRequestForExecution(request, context = {}) {
+  const projectId = String(context.projectId ?? "").trim() || null;
+  const taskId = String(context.taskId ?? "").trim() || null;
+  const agentId = String(context.agentId ?? "").trim() || null;
+  const correlationIdSeed = context.correlationId || `${taskId || "task"}:${Date.now()}`;
+  const requestedTaskId = String(request?.task_id || request?.taskId || "").trim() || null;
+  const requestedProjectId =
+    String(request?.project_id || request?.projectId || getRequestArg(request, "projectId", "")).trim() ||
+    null;
+  const requestedAgentId =
+    String(request?.agent_id || request?.agentRequestId || request?.agentId || "").trim() || null;
+
+  const normalized = {
+    ...request,
+    type: request?.type === "tool_request" ? "tool_request" : "tool_request",
+    request_id: String(
+      request?.request_id ||
+        request?.requestId ||
+        `${agentId || "agent"}:${taskId || "task"}:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`
+    ).trim(),
+    task_id: taskId || requestedTaskId,
+    project_id: projectId || requestedProjectId,
+    agent_id: agentId || requestedAgentId,
+    correlation_id:
+      String(request?.correlation_id || request?.correlationId || correlationIdSeed || "").trim() ||
+      correlationIdSeed,
+    action: String(request?.action || "").trim(),
+    reason: String(request?.reason || "").trim(),
+    args: {
+      ...(request?.args && typeof request.args === "object" ? request.args : {}),
+      ...(request?.path !== undefined ? { path: request.path } : {}),
+      ...(request?.dir !== undefined ? { dir: request.dir } : {}),
+      ...(request?.pattern !== undefined ? { pattern: request.pattern } : {}),
+      ...(request?.paths !== undefined ? { paths: request.paths } : {}),
+      ...(request?.startLine !== undefined ? { startLine: request.startLine } : {}),
+      ...(request?.endLine !== undefined ? { endLine: request.endLine } : {}),
+      ...(request?.oldString !== undefined ? { oldString: request.oldString } : {}),
+      ...(request?.newString !== undefined ? { newString: request.newString } : {}),
+      ...(request?.content !== undefined ? { content: request.content } : {}),
+      ...(request?.patch !== undefined ? { patch: request.patch } : {}),
+      ...(request?.cmd !== undefined ? { cmd: request.cmd } : {}),
+      ...(request?.task !== undefined ? { task: request.task } : {}),
+      ...(request?.assignments !== undefined ? { assignments: request.assignments } : {}),
+      ...(request?.agent !== undefined ? { agent: request.agent } : {}),
+      ...(request?.agentId !== undefined ? { agentId: request.agentId } : {}),
+      ...(projectId ? { projectId } : {}),
+      ...(taskId ? { taskId } : {}),
+      ...(agentId ? { ownerAgentId: agentId } : {})
+    }
+  };
+
+  return {
+    ...normalized,
+    path: getRequestArg(normalized, "path", undefined),
+    dir: getRequestArg(normalized, "dir", undefined),
+    pattern: getRequestArg(normalized, "pattern", undefined),
+    paths: getRequestArg(normalized, "paths", undefined),
+    startLine: getRequestArg(normalized, "startLine", undefined),
+    endLine: getRequestArg(normalized, "endLine", undefined),
+    oldString: getRequestArg(normalized, "oldString", undefined),
+    newString: getRequestArg(normalized, "newString", undefined),
+    content: getRequestArg(normalized, "content", undefined),
+    patch: getRequestArg(normalized, "patch", undefined),
+    cmd: getRequestArg(normalized, "cmd", undefined),
+    task: getRequestArg(normalized, "task", undefined),
+    assignments: getRequestArg(normalized, "assignments", undefined),
+    agent: getRequestArg(normalized, "agent", normalized.agent),
+    agentId: getRequestArg(normalized, "agentId", normalized.agentId)
+  };
+}
+
+function buildRequestReplaySignature(request) {
+  const stablePayload = {
+    action: request.action,
+    reason: request.reason || "",
+    path: request.path,
+    dir: request.dir,
+    pattern: request.pattern,
+    paths: request.paths,
+    startLine: request.startLine,
+    endLine: request.endLine,
+    oldString: request.oldString,
+    newString: request.newString,
+    cmd: request.cmd,
+    task: request.task,
+    assignments: request.assignments,
+    args: request.args
+  };
+
+  return JSON.stringify(stablePayload);
+}
+
+function buildCoreToolArtifacts(request, result = {}) {
+  const safeResultPayload = {
+    ...result
+  };
+  if (typeof safeResultPayload.content === "string" && safeResultPayload.content.length > 12000) {
+    safeResultPayload.content = `${safeResultPayload.content.slice(0, 12000)}\n\n... truncated ...`;
+  }
+
+  if (Array.isArray(safeResultPayload.files)) {
+    safeResultPayload.files = safeResultPayload.files.map((entry) => {
+      if (typeof entry?.content === "string" && entry.content.length > 8000) {
+        return {
+          ...entry,
+          content: `${entry.content.slice(0, 8000)}\n\n... truncated ...`
+        };
+      }
+
+      return entry;
+    });
+  }
+
+  const filesChanged = Array.isArray(result?.filesChanged)
+    ? result.filesChanged.map((file) => file?.path).filter(Boolean)
+    : [];
+
+  const diffPreview = Array.isArray(result?.filesChanged)
+    ? result.filesChanged
+        .map((file) => String(file?.diff || "").trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .join("\n\n")
+    : "";
+
+  return {
+    action: request.action,
+    files_changed: filesChanged,
+    diff_preview: diffPreview,
+    exit_code: Number.isFinite(result?.exitCode) ? result.exitCode : null,
+    stdout: result?.stdout ? String(result.stdout).slice(0, 12000) : "",
+    stderr: result?.stderr ? String(result.stderr).slice(0, 12000) : "",
+    process_id: result?.processId || null,
+    receipt_source: "hydra-main-runtime",
+    result_payload: safeResultPayload
+  };
+}
+
+function resultFromEnvelope(envelope, fallbackAction) {
+  const payload = envelope?.artifacts?.result_payload;
+  if (payload && typeof payload === "object") {
+    return payload;
+  }
+
+  return {
+    ok: Boolean(envelope?.ok),
+    action: fallbackAction,
+    receiptId: envelope?.receipt_id || null,
+    error: envelope?.error || "",
+    summary: envelope?.summary || "",
+    artifacts: envelope?.artifacts || {}
+  };
+}
+
+function taskLikelyRequiresExecution(taskText) {
+  const normalized = String(taskText || "").toLowerCase();
+  if (!normalized.trim()) {
+    return false;
+  }
+
+  if (normalized.length < 30) {
+    return false;
+  }
+
+  const actionHints = [
+    "implement",
+    "fix",
+    "change",
+    "edit",
+    "update",
+    "refactor",
+    "create",
+    "add",
+    "remove",
+    "delete",
+    "run",
+    "test",
+    "build",
+    "spec",
+    "bug",
+    "patch",
+    "file"
+  ];
+
+  return actionHints.some((hint) => normalized.includes(hint));
 }
 
 function extractTemporaryUnavailableMessage(value) {
@@ -637,6 +886,7 @@ async function continueWithToolBridge({
   let repeatedRequestCount = 0;
   let pendingRestart = false;
   let nextPrompt = initialPrompt;
+  let forcedToolHintCount = 0;
   const cachedResultsBySignature = new Map();
   const accumulatedFileChanges = new Map();
 
@@ -671,6 +921,12 @@ async function continueWithToolBridge({
       task: buildDelegatedTask(request.task || "", agent, targetExecutionContext),
       parentAgent: agent
     });
+
+    if (!workerResult?.success) {
+      throw new Error(
+        `Delegated worker ${target.name} failed: ${workerResult?.error || "unknown error"}`
+      );
+    }
 
     emitTaskEvent(projectId, {
       taskId,
@@ -746,9 +1002,25 @@ async function continueWithToolBridge({
     history.push({ role: "user", content: currentPrompt });
     history.push({ role: "assistant", content: latestResponse });
 
-    const request = parseToolRequest(latestResponse);
+    const parsedRequest = parseToolRequest(latestResponse);
 
-    if (!request) {
+    if (!parsedRequest) {
+      if (
+        executedSteps === 0 &&
+        forcedToolHintCount < 1 &&
+        taskLikelyRequiresExecution(task)
+      ) {
+        forcedToolHintCount += 1;
+        currentPrompt = [
+          "[HYDRA_TOOL_RESULT]",
+          "Your previous reply did not include a valid tool_request.",
+          "For implementation tasks, Hydra requires real tool execution with receipts.",
+          "Respond with exactly one ```hydra``` JSON envelope (type=tool_request) for the next concrete step.",
+          "Do not answer in plain text yet."
+        ].join("\n");
+        continue;
+      }
+
       if (executedSteps > 0) {
         console.info(
           `[Hydra bridge] ${agent.name} completed after ${executedSteps} tool step(s).`
@@ -757,12 +1029,20 @@ async function continueWithToolBridge({
 
       return {
         response: appendHydraChangeSummary(latestResponse, accumulatedFileChanges),
-        pendingRestart
+        pendingRestart,
+        executedSteps
       };
     }
 
+    const request = normalizeRequestForExecution(parsedRequest, {
+      taskId,
+      projectId,
+      agentId: executionAgent.id,
+      correlationId: `${taskId}:tool-step:${executedSteps + 1}`
+    });
+
     executedSteps += 1;
-    const requestSignature = JSON.stringify(request);
+    const requestSignature = buildRequestReplaySignature(request);
 
     if (requestSignature === lastRequestSignature) {
       repeatedRequestCount += 1;
@@ -786,7 +1066,8 @@ async function continueWithToolBridge({
           ].join("\n"),
           accumulatedFileChanges
         ),
-        pendingRestart
+        pendingRestart,
+        executedSteps
       };
     }
 
@@ -823,15 +1104,60 @@ async function continueWithToolBridge({
       // Delegation remains available, but edits are not blocked when workers exist.
 
       const settings = await getAppSettings();
+      const approvalMode = settings.approval_mode || "manual";
       const approved = await requestToolApproval({
         agent,
         request,
         projectRoot: executionContext.workspacePath,
-        approvalMode: settings.approval_mode
+        approvalMode
       });
 
+      const preparedToolCall = await prepareCoreToolCall({
+        envelope: request,
+        defaults: {
+          request_id: request.request_id,
+          task_id: taskId,
+          project_id: projectId,
+          agent_id: executionAgent.id,
+          correlation_id: request.correlation_id
+        },
+        approvalRequired: approvalMode !== "auto" && !LOCAL_ONLY_TOOL_ACTIONS.has(request.action),
+        approved
+      });
+
+      if (preparedToolCall?.malformed) {
+        const validationMessage =
+          preparedToolCall?.validation?.error?.message ||
+          preparedToolCall?.validation?.message ||
+          "Malformed tool request payload.";
+        followUpPrompt = formatToolResultPrompt(request, {
+          ok: false,
+          action: request.action,
+          error: validationMessage
+        });
+        currentPrompt = followUpPrompt;
+        continue;
+      }
+
+      if (preparedToolCall?.cached && preparedToolCall?.resultEnvelope) {
+        const cachedResult = resultFromEnvelope(preparedToolCall.resultEnvelope, request.action);
+        if (isCacheableToolAction(request.action)) {
+          cachedResultsBySignature.set(requestSignature, cachedResult);
+        }
+        followUpPrompt = formatRepeatedToolResultPrompt(request, cachedResult, repeatedRequestCount + 1);
+        currentPrompt = followUpPrompt;
+        continue;
+      }
+
       if (!approved) {
-        followUpPrompt = formatRejectedToolPrompt(request);
+        if (preparedToolCall?.resultEnvelope) {
+          followUpPrompt = formatToolResultPrompt(
+            request,
+            resultFromEnvelope(preparedToolCall.resultEnvelope, request.action)
+          );
+        } else {
+          followUpPrompt = formatRejectedToolPrompt(request);
+        }
       } else {
         if (projectId && agent.role === "orchestrator") {
           emitTaskEvent(projectId, {
@@ -844,6 +1170,81 @@ async function continueWithToolBridge({
           });
         }
         const result = await executeToolRequest(executionContext.workspacePath, request, {
+          startProcess: (payload) =>
+            startCoreProcess({
+              ...payload,
+              taskId: payload?.taskId || taskId,
+              projectId: payload?.projectId || projectId,
+              ownerAgentId: payload?.ownerAgentId || executionAgent.id,
+              cwd: payload?.cwd || executionContext.workspacePath
+            }),
+          stopProcess: (processId) => stopCoreProcess(processId),
+          restartProcess: (processId) => restartCoreProcess(processId),
+          readProcessOutput: (processId, options = {}) =>
+            readCoreProcessOutput(processId, options),
+          listProcesses: (filters = {}) =>
+            listCoreProcesses({
+              ...filters,
+              projectId: filters?.projectId || projectId
+            }),
+          capturePreview: (payload) =>
+            captureCorePreview({
+              ...payload,
+              taskId: payload?.taskId || taskId,
+              projectId: payload?.projectId || projectId
+            }),
+          detectEnvironment: (payload) =>
+            detectCoreEnvironment({
+              ...payload,
+              projectId: payload?.projectId || projectId,
+              projectRoot: payload?.projectRoot || executionContext.workspacePath
+            }),
+          ensureRuntime: (payload) => ensureCoreRuntime(payload),
+          createEnvironment: (payload) =>
+            createCoreEnvironment({
+              ...payload,
+              projectRoot: payload?.projectRoot || executionContext.workspacePath
+            }),
+          installDependencies: (payload) =>
+            installCoreDependencies({
+              ...payload,
+              projectRoot: payload?.projectRoot || executionContext.workspacePath
+            }),
+          activateEnvironment: (payload) => activateCoreEnvironment(payload),
+          describeEnvironment: (payload) => describeCoreEnvironment(payload),
+          listTools: (filters) => listCoreTools(filters),
+          describeTool: (name, version) => describeCoreTool(name, version),
+          listToolVersions: (name) => listCoreToolVersions(name),
+          listCapabilityGaps: (filters) => listCoreCapabilityGaps(filters),
+          emitCapabilityGap: (payload) =>
+            createCoreCapabilityGap({
+              ...payload,
+              taskId: payload?.taskId || taskId,
+              projectId: payload?.projectId || projectId
+            }),
+          setSecret: (payload) =>
+            setCoreSecret({
+              ...payload,
+              projectId: payload?.projectId || projectId
+            }),
+          listSecretRefs: (activeProjectId) => listCoreSecretRefs(activeProjectId || projectId),
+          deleteSecret: (payload) =>
+            deleteCoreSecret({
+              ...payload,
+              projectId: payload?.projectId || projectId
+            }),
+          injectSecretRef: (payload) =>
+            injectCoreSecret({
+              ...payload,
+              projectId: payload?.projectId || projectId
+            }),
+          runVerification: (payload) =>
+            runCoreTaskVerification(taskId, {
+              ...payload,
+              taskId: payload?.taskId || taskId,
+              projectId: payload?.projectId || projectId,
+              projectRoot: payload?.projectRoot || executionContext.workspacePath
+            }),
           delegateTask: handleDelegatedTask,
           delegateTasks: handleDelegatedTasks,
           rebuildApp: () =>
@@ -862,6 +1263,21 @@ async function continueWithToolBridge({
             });
           }
         });
+
+        const finalizedToolCall = await finalizeCoreToolCall({
+          requestId: request.request_id,
+          toolCallId: preparedToolCall?.toolCall?.id || null,
+          result,
+          summary: result?.ok
+            ? `Executed ${request.action}`
+            : `Failed ${request.action}: ${result?.error || "unknown error"}`,
+          artifacts: buildCoreToolArtifacts(request, result),
+          error: result?.error || ""
+        });
+
+        if (finalizedToolCall?.resultEnvelope?.receipt_id) {
+          result.receiptId = finalizedToolCall.resultEnvelope.receipt_id;
+        }
 
         console.info(
           `[Hydra bridge] ${agent.name} via ${executionAgent.name} executed ${request.action} successfully.`
@@ -905,6 +1321,32 @@ async function continueWithToolBridge({
           message: error.message
         });
       }
+
+      try {
+        await finalizeCoreToolCall({
+          requestId: request.request_id,
+          result: {
+            ok: false,
+            action: request.action,
+            error: error.message
+          },
+          summary: `Failed ${request.action}`,
+          artifacts: buildCoreToolArtifacts(request, {
+            ok: false,
+            action: request.action,
+            error: error.message
+          }),
+          error: error.message
+        });
+      } catch (finalizeError) {
+        const message = String(finalizeError?.message || "");
+        if (!message.includes("Tool call not found for finalization")) {
+          console.warn(
+            `[Hydra bridge] Could not finalize failed tool call ${request.request_id}: ${message}`
+          );
+        }
+      }
+
       followUpPrompt = formatToolResultPrompt(request, {
         ok: false,
         action: request.action,
@@ -1121,6 +1563,12 @@ async function executeAgentTask({
   try {
     await updateTaskStatus(taskId, "sent");
     await updateTaskStatus(taskId, "working");
+    await transitionCoreTaskState(taskId, {
+      toState: "in_progress",
+      actorType: "scheduler",
+      actorId: executionAgent.id,
+      reason: "Task assigned to active worker"
+    });
 
     if (projectId && agent.role === "orchestrator") {
       emitTaskEvent(projectId, {
@@ -1134,6 +1582,81 @@ async function executeAgentTask({
 
     const { bridgeResult, executionAgent: finalExecutionAgent } =
       await runWithExecutionAgent(executionAgent);
+    const executedToolSteps = Number(bridgeResult?.executedSteps || 0);
+
+    if (executedToolSteps > 0) {
+      let verificationResult = null;
+      try {
+        await transitionCoreTaskState(taskId, {
+          toState: "in_review",
+          actorType: "orchestrator",
+          actorId: agent.id,
+          reason: "Implementation submitted with evidence"
+        });
+
+        if (executionContext.workspacePath && projectId) {
+          verificationResult = await runCoreTaskVerification(taskId, {
+            taskId,
+            projectId,
+            projectRoot: executionContext.workspacePath
+          });
+
+          if (!verificationResult.ok && !verificationResult.skipped) {
+            await transitionCoreTaskState(taskId, {
+              toState: "in_progress",
+              actorType: "review",
+              actorId: agent.id,
+              reason: "Verification failed. Task returned for rework."
+            });
+
+            const firstFailure = verificationResult.commands?.find((entry) => !entry.success);
+            const failureMessage = firstFailure
+              ? `${firstFailure.command}: ${firstFailure.stderr || firstFailure.stdout || "failed"}`
+              : "Verification failed.";
+
+            await createCoreReviewIssue(taskId, {
+              projectId,
+              issueType: "missing_tests",
+              title: "Verification failed",
+              details: failureMessage
+            });
+            throw new Error(failureMessage);
+          }
+        }
+
+        await transitionCoreTaskState(taskId, {
+          toState: "complete",
+          actorType: "orchestrator",
+          actorId: agent.id,
+          reason:
+            verificationResult?.ok || verificationResult?.skipped
+              ? "Verification gate passed"
+              : "Completion gate passed"
+        });
+      } catch (lifecycleError) {
+        try {
+          await transitionCoreTaskState(taskId, {
+            toState: "blocked",
+            actorType: "system",
+            actorId: agent.id,
+            reason: lifecycleError.message,
+            bypassGuards: true
+          });
+        } catch {
+          // Keep original lifecycle error as primary failure.
+        }
+
+        throw lifecycleError;
+      }
+    } else {
+      await transitionCoreTaskState(taskId, {
+        toState: "complete",
+        actorType: "orchestrator",
+        actorId: agent.id,
+        reason: "Conversation-only task (no local side effects).",
+        bypassGuards: true
+      });
+    }
 
     const aiMeta = taskAiMetaByTaskId.get(taskId) || null;
     taskAiMetaByTaskId.delete(taskId);
@@ -1198,6 +1721,17 @@ async function executeAgentTask({
   } catch (error) {
     taskAiMetaByTaskId.delete(taskId);
     await updateTaskStatus(taskId, "error");
+    try {
+      await transitionCoreTaskState(taskId, {
+        toState: "blocked",
+        actorType: "system",
+        actorId: agent.id,
+        reason: error.message,
+        bypassGuards: true
+      });
+    } catch {
+      // Ignore lifecycle write errors on failure path.
+    }
     await updateAgentStatus(agent.id, "error");
 
     if (latestExecutionAgent.id !== agent.id) {
@@ -1228,7 +1762,14 @@ async function executeAgentTask({
       });
     }
 
-    throw error;
+    return {
+      success: false,
+      taskId: taskId,
+      error: error.message,
+      workspacePath: executionContext.workspacePath,
+      branchName: executionContext.branchName,
+      journalPath: executionContext.journalPath
+    };
   }
 }
 

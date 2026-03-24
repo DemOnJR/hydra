@@ -416,6 +416,19 @@ export function TaskBroadcast({
     }
   }
 
+  function getNextApprovalMode(mode) {
+    const order = ["manual", "semi-auto", "auto"];
+    const index = order.indexOf(mode);
+    return order[(index + 1 + order.length) % order.length];
+  }
+
+  const approvalModeLabel =
+    approvalMode === "auto"
+      ? "Auto"
+      : approvalMode === "semi-auto"
+        ? "Semi"
+        : "Manual";
+
   const disabled = !activeProject?.id || !activeProject?.root_path?.trim() || !orchestratorAgent;
   const isWorking = tasks.some(t => t.agent_id === orchestratorAgent?.id && ["pending", "sent", "working"].includes(t.status));
 
@@ -477,11 +490,19 @@ export function TaskBroadcast({
         <div className="flex items-center justify-between mt-5 px-3">
           <button
             type="button"
-            onClick={() => handleApprovalModeChange(approvalMode === "auto" ? "manual" : "auto")}
-            className={`flex items-center gap-2.5 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border transition-all ${approvalMode === "auto" ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-indigo-500/10" : "bg-zinc-800/50 text-zinc-600 border-zinc-800 hover:text-zinc-400"}`}
+            onClick={() => handleApprovalModeChange(getNextApprovalMode(approvalMode))}
+            title={`Approval: ${approvalModeLabel}`}
+            className={`w-7 h-7 flex items-center justify-center rounded-md border transition-all ${
+              approvalMode === "auto"
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-sm shadow-emerald-500/10"
+                : approvalMode === "semi-auto"
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                  : "bg-zinc-800/50 border-zinc-800 text-zinc-600 hover:text-zinc-400"
+            }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${approvalMode === "auto" ? "bg-indigo-400 animate-pulse" : "bg-zinc-700"}`} />
-            Auto Pilot {approvalMode === "auto" ? "Active" : "Disabled"}
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2L3 6v6c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V6l-9-4z" />
+            </svg>
           </button>
           <div className="flex items-center gap-3">
              <span className="w-1 h-1 rounded-full bg-zinc-800" />

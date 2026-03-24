@@ -51,6 +51,56 @@ const READ_ONLY_BATCH_ACTIONS = new Set([
   "read_files"
 ]);
 
+const READ_ONLY_ACTIONS = new Set([
+  "list_files",
+  "search_files",
+  "read_file",
+  "read_file_lines",
+  "read_files",
+  "batch_actions",
+  "read_process_output",
+  "list_processes",
+  "detect_environment",
+  "describe_environment",
+  "list_tools",
+  "describe_tool",
+  "list_tool_versions",
+  "list_capability_gaps",
+  "list_secret_refs"
+]);
+
+const DESTRUCTIVE_ACTIONS = new Set([
+  "run_command",
+  "write_file",
+  "replace",
+  "apply_patch",
+  "restart_app",
+  "delete_secret"
+]);
+
+function shouldAutoApproveByMode(approvalMode, action) {
+  const mode = String(approvalMode || "manual").trim();
+  const normalizedAction = String(action || "").trim();
+
+  if (!normalizedAction) {
+    return false;
+  }
+
+  if (READ_ONLY_ACTIONS.has(normalizedAction)) {
+    return true;
+  }
+
+  if (mode === "auto") {
+    return true;
+  }
+
+  if (mode === "semi-auto") {
+    return !DESTRUCTIVE_ACTIONS.has(normalizedAction);
+  }
+
+  return false;
+}
+
 function resolveProjectPath(projectRoot, targetPath = ".") {
   const resolvedRoot = path.resolve(projectRoot);
   const resolvedTarget = path.resolve(resolvedRoot, targetPath);
@@ -920,41 +970,69 @@ function normalizeSingleRequestObject(raw) {
   }
 
   const action = String(raw.action ?? raw.tool ?? "").trim();
+  const args = raw.args && typeof raw.args === "object" && !Array.isArray(raw.args) ? raw.args : {};
 
   if (!action) {
     return null;
   }
 
+  const resolvedPath = args.path ?? raw.path;
+  const resolvedDir = args.dir ?? raw.dir;
+  const resolvedPattern = args.pattern ?? raw.pattern;
+  const resolvedStartLine = args.startLine ?? raw.startLine;
+  const resolvedEndLine = args.endLine ?? raw.endLine;
+  const resolvedOldString = args.oldString ?? raw.oldString;
+  const resolvedNewString = args.newString ?? raw.newString;
+  const resolvedPaths = args.paths ?? raw.paths;
+  const resolvedCmd = args.cmd ?? raw.cmd;
+  const resolvedTask = args.task ?? raw.task;
+  const resolvedContent = args.content ?? raw.content;
+  const resolvedPatch = args.patch ?? raw.patch;
+  const resolvedAssignments = args.assignments ?? raw.assignments;
+  const resolvedActions = args.actions ?? raw.actions;
+  const resolvedAgent = args.agent ?? raw.agent;
+  const resolvedAgentId = args.agentId ?? args.agent_id ?? raw.agentId ?? raw.agent_id;
+
   return {
     action,
+    type: String(raw.type ?? "").trim() || undefined,
+    requestId: raw.request_id ? String(raw.request_id).trim() : undefined,
+    taskId: raw.task_id ? String(raw.task_id).trim() : undefined,
+    agentRequestId: raw.agent_id ? String(raw.agent_id).trim() : undefined,
+    correlationId: raw.correlation_id ? String(raw.correlation_id).trim() : undefined,
     reason: String(raw.reason ?? "").trim(),
-    agent: raw.agent ? String(raw.agent).trim() : undefined,
-    agentId: raw.agentId ? String(raw.agentId).trim() : undefined,
-    pattern: raw.pattern ? String(raw.pattern).trim() : undefined,
-    path: raw.path ? String(raw.path).trim() : undefined,
-    startLine: parseLineNumber(raw.startLine) ?? undefined,
-    endLine: parseLineNumber(raw.endLine) ?? undefined,
-    oldString: raw.oldString !== undefined ? String(raw.oldString) : undefined,
-    newString: raw.newString !== undefined ? String(raw.newString) : undefined,
-    paths: Array.isArray(raw.paths)
-      ? [...new Set(raw.paths.map((item) => String(item ?? "").trim()).filter(Boolean))]
+    agent: resolvedAgent ? String(resolvedAgent).trim() : undefined,
+    agentId: resolvedAgentId ? String(resolvedAgentId).trim() : undefined,
+    pattern: resolvedPattern ? String(resolvedPattern).trim() : undefined,
+    path: resolvedPath ? String(resolvedPath).trim() : undefined,
+    startLine: parseLineNumber(resolvedStartLine) ?? undefined,
+    endLine: parseLineNumber(resolvedEndLine) ?? undefined,
+    oldString: resolvedOldString !== undefined ? String(resolvedOldString) : undefined,
+    newString: resolvedNewString !== undefined ? String(resolvedNewString) : undefined,
+    paths: Array.isArray(resolvedPaths)
+      ? [...new Set(resolvedPaths.map((item) => String(item ?? "").trim()).filter(Boolean))]
       : undefined,
-    dir: raw.dir ? String(raw.dir).trim() : undefined,
-    cmd: raw.cmd ? String(raw.cmd).trim() : undefined,
-    task: raw.task ? String(raw.task).trim() : undefined,
-    content: typeof raw.content === "string" ? raw.content : undefined,
-    patch: typeof raw.patch === "string" ? raw.patch : undefined,
-    assignments: Array.isArray(raw.assignments)
-      ? raw.assignments
+    dir: resolvedDir ? String(resolvedDir).trim() : undefined,
+    cmd: resolvedCmd ? String(resolvedCmd).trim() : undefined,
+    task: resolvedTask ? String(resolvedTask).trim() : undefined,
+    content: typeof resolvedContent === "string" ? resolvedContent : undefined,
+    patch: typeof resolvedPatch === "string" ? resolvedPatch : undefined,
+    args,
+    assignments: Array.isArray(resolvedAssignments)
+      ? resolvedAssignments
           .map((assignment) => ({
             agent: assignment?.agent ? String(assignment.agent).trim() : "",
-            agentId: assignment?.agentId ? String(assignment.agentId).trim() : "",
+            agentId: assignment?.agentId
+              ? String(assignment.agentId).trim()
+              : assignment?.agent_id
+                ? String(assignment.agent_id).trim()
+                : "",
             task: assignment?.task ? String(assignment.task).trim() : ""
           }))
           .filter((assignment) => (assignment.agent || assignment.agentId) && assignment.task)
       : undefined,
-    actions: Array.isArray(raw.actions)
-      ? raw.actions.map((entry) => normalizeSingleRequestObject(entry)).filter(Boolean)
+    actions: Array.isArray(resolvedActions)
+      ? resolvedActions.map((entry) => normalizeSingleRequestObject(entry)).filter(Boolean)
       : undefined
   };
 }
@@ -1123,6 +1201,79 @@ function tryParseRequest(candidateText) {
   return null;
 }
 
+function containsPromptEchoMarkers(text) {
+  const source = String(text ?? "");
+  return (
+    source.includes("[HYDRA BRIDGE]") ||
+    source.includes("[PROJECT CONTEXT]") ||
+    source.includes("[CURRENT USER REQUEST]") ||
+    source.includes("[AGENT ROLE]")
+  );
+}
+
+function isTemplatePlaceholder(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return new Set([
+    "uuid",
+    "task-uuid",
+    "agent-uuid",
+    "project-uuid",
+    "process-uuid",
+    "env-profile-uuid",
+    "tool-uuid",
+    "/path/to/project",
+    "worker name",
+    "worker a",
+    "worker b",
+    "api_key"
+  ]).has(normalized);
+}
+
+function looksLikeTemplateRequest(request, fullText = "") {
+  const templateFields = [
+    request?.requestId,
+    request?.taskId,
+    request?.agentRequestId,
+    request?.correlationId,
+    request?.agent,
+    request?.agentId,
+    request?.path,
+    request?.dir,
+    request?.args?.projectId,
+    request?.args?.taskId,
+    request?.args?.processId,
+    request?.args?.profileId,
+    request?.args?.projectRoot,
+    request?.args?.runtimeFamily,
+    request?.args?.runtimeVersion,
+    request?.args?.name
+  ];
+
+  if (templateFields.some((value) => isTemplatePlaceholder(value))) {
+    return true;
+  }
+
+  const normalizedReason = String(request?.reason || "").trim().toLowerCase();
+  if (normalizedReason.includes("explore the project structure before taking action")) {
+    return true;
+  }
+
+  if (
+    containsPromptEchoMarkers(fullText) &&
+    request?.action === "list_files" &&
+    String(request?.dir || request?.args?.dir || ".").trim() === "." &&
+    !request?.path
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function parseToolRequest(responseText) {
   const text = String(responseText ?? "").trim();
   
@@ -1132,8 +1283,7 @@ export function parseToolRequest(responseText) {
 
   const patterns = [
     /```hydra(?:-tool)?\s*([\s\S]*?)```/gi,
-    /```json\s*([\s\S]*?"action"[\s\S]*?)```/gi,
-    /```(?:[a-z]*)?\s*([\s\S]*?"action"[\s\S]*?)```/gi,
+    /```json\s*([\s\S]*?)```/gi,
     /(?:^|\n)\s*hydra(?:-tool)?\s*([\[{][\s\S]*)$/gi,
     /(?:^|\n)\s*hydra(?:-tool)?\s*\n([\s\S]*)$/gi
   ];
@@ -1143,20 +1293,28 @@ export function parseToolRequest(responseText) {
 
     for (const match of matches) {
       const normalized = tryParseRequest(match[1]);
-      if (normalized) {
+      if (normalized && !looksLikeTemplateRequest(normalized, text)) {
         return normalized;
       }
     }
   }
 
-  const fallback = tryParseRequest(text);
-  if (fallback) {
-    return fallback;
+  if (text.startsWith("{") || text.startsWith("[")) {
+    const direct = tryParseRequest(text);
+    if (direct && !looksLikeTemplateRequest(direct, text)) {
+      return direct;
+    }
   }
 
-  // Final loose attempt: look for anything that looks like "action":"..."
+  if (containsPromptEchoMarkers(text) && (text.includes('"action"') || text.includes("'action'"))) {
+    console.info("[Hydra] Ignored tool-like JSON because output appears to be prompt/context echo.");
+    return null;
+  }
+
+  // Final log-only attempt for diagnostics. We intentionally do not parse loose JSON here,
+  // because prompt/context echoes often contain action examples.
   if (text.includes('"action"') || text.includes("'action'")) {
-    console.info("[Hydra] Detected potential tool call in text but failed to parse. Output was:\n" + text.slice(0, 500));
+    console.info("[Hydra] Detected tool-like JSON but no strict Hydra request block was found.");
   }
 
   return null;
@@ -1184,6 +1342,50 @@ function summarizeRequest(request) {
       return `Run ${request.actions?.length || 0} batched read-only actions`;
     case "run_command":
       return `Run command: ${request.cmd}`;
+    case "start_process":
+      return `Start process: ${request.cmd || request.args?.command || "(command)"}`;
+    case "stop_process":
+      return `Stop process ${request.args?.processId || request.processId || ""}`;
+    case "restart_process":
+      return `Restart process ${request.args?.processId || request.processId || ""}`;
+    case "read_process_output":
+      return `Read process output ${request.args?.processId || request.processId || ""}`;
+    case "list_processes":
+      return "List tracked processes";
+    case "detect_environment":
+      return "Detect project environment";
+    case "ensure_runtime":
+      return `Ensure runtime ${request.args?.runtimeFamily || ""}`;
+    case "create_environment":
+      return "Create project environment";
+    case "install_dependencies":
+      return "Install project dependencies";
+    case "activate_environment":
+      return "Activate project environment";
+    case "describe_environment":
+      return "Describe active environment";
+    case "list_tools":
+      return "List runtime tools";
+    case "describe_tool":
+      return `Describe tool ${request.args?.name || request.toolName || ""}`;
+    case "list_tool_versions":
+      return `List tool versions ${request.args?.name || request.toolName || ""}`;
+    case "list_capability_gaps":
+      return "List capability gaps";
+    case "emit_capability_gap":
+      return "Emit capability gap";
+    case "set_secret":
+      return `Set secret ${request.args?.name || ""}`;
+    case "list_secret_refs":
+      return "List secret refs";
+    case "delete_secret":
+      return `Delete secret ${request.args?.name || ""}`;
+    case "inject_secret_ref":
+      return `Inject secret ${request.args?.name || ""}`;
+    case "capture_preview":
+      return `Capture preview ${request.args?.url || ""}`;
+    case "run_verification":
+      return "Run verification commands";
     case "delegate_task":
       return `Delegate task to ${request.agent || request.agentId}`;
     case "delegate_tasks":
@@ -1205,7 +1407,7 @@ export async function requestToolApproval({
   projectRoot,
   approvalMode
 }) {
-  if (approvalMode === "auto") {
+  if (shouldAutoApproveByMode(approvalMode, request.action)) {
     return true;
   }
 
@@ -1311,6 +1513,19 @@ async function executeReadOnlyToolRequest(projectRoot, request) {
 }
 
 export async function executeToolRequest(projectRoot, request, options = {}) {
+  const requestArgs = request?.args && typeof request.args === "object" ? request.args : {};
+  const readArg = (name, fallback = undefined) => {
+    if (request[name] !== undefined) {
+      return request[name];
+    }
+
+    if (requestArgs[name] !== undefined) {
+      return requestArgs[name];
+    }
+
+    return fallback;
+  };
+
   switch (request.action) {
     case "list_files":
     case "search_files":
@@ -1369,8 +1584,237 @@ export async function executeToolRequest(projectRoot, request, options = {}) {
     case "run_command":
       return {
         action: request.action,
-        ...(await runCommand(projectRoot, request.cmd))
+        ...(await runCommand(projectRoot, readArg("cmd", "")))
       };
+
+    case "start_process":
+      if (typeof options.startProcess !== "function") {
+        throw new Error("Process manager is not available in this runtime.");
+      }
+
+      return options.startProcess({
+        taskId: readArg("taskId", readArg("task_id", null)),
+        projectId: readArg("projectId", readArg("project_id", null)),
+        ownerAgentId: readArg("ownerAgentId", readArg("owner_agent_id", null)),
+        command: readArg("command", readArg("cmd", "")),
+        cwd: readArg("cwd", projectRoot),
+        env: readArg("env", {}),
+        autoRestart: Boolean(readArg("autoRestart", false)),
+        metadata: readArg("metadata", {})
+      });
+
+    case "stop_process":
+      if (typeof options.stopProcess !== "function") {
+        throw new Error("Process manager is not available in this runtime.");
+      }
+
+      return options.stopProcess(String(readArg("processId", "")).trim());
+
+    case "restart_process":
+      if (typeof options.restartProcess !== "function") {
+        throw new Error("Process manager is not available in this runtime.");
+      }
+
+      return options.restartProcess(String(readArg("processId", "")).trim());
+
+    case "read_process_output":
+      if (typeof options.readProcessOutput !== "function") {
+        throw new Error("Process manager is not available in this runtime.");
+      }
+
+      return options.readProcessOutput(String(readArg("processId", "")).trim(), {
+        limit: readArg("limit", 500),
+        afterId: readArg("afterId", 0)
+      });
+
+    case "list_processes":
+      if (typeof options.listProcesses !== "function") {
+        throw new Error("Process manager is not available in this runtime.");
+      }
+
+      return options.listProcesses({
+        projectId: readArg("projectId", readArg("project_id", null)),
+        taskId: readArg("taskId", readArg("task_id", null)),
+        state: readArg("state", null)
+      });
+
+    case "capture_preview":
+      if (typeof options.capturePreview !== "function") {
+        throw new Error("Preview engine is not available in this runtime.");
+      }
+
+      return options.capturePreview({
+        taskId: readArg("taskId", readArg("task_id", null)),
+        projectId: readArg("projectId", readArg("project_id", null)),
+        url: readArg("url", ""),
+        waitMs: readArg("waitMs", 1500),
+        fullPage: readArg("fullPage", true),
+        viewport: readArg("viewport", { width: 1400, height: 900 })
+      });
+
+    case "detect_environment":
+      if (typeof options.detectEnvironment !== "function") {
+        throw new Error("Environment manager is not available in this runtime.");
+      }
+
+      return options.detectEnvironment({
+        projectId: readArg("projectId", readArg("project_id", null)),
+        projectRoot: readArg("projectRoot", projectRoot)
+      });
+
+    case "ensure_runtime":
+      if (typeof options.ensureRuntime !== "function") {
+        throw new Error("Environment manager is not available in this runtime.");
+      }
+
+      return options.ensureRuntime({
+        runtimeFamily: readArg("runtimeFamily", ""),
+        runtimeVersion: readArg("runtimeVersion", "")
+      });
+
+    case "create_environment":
+      if (typeof options.createEnvironment !== "function") {
+        throw new Error("Environment manager is not available in this runtime.");
+      }
+
+      return options.createEnvironment({
+        profileId: readArg("profileId", null),
+        projectRoot: readArg("projectRoot", projectRoot),
+        runtimeFamily: readArg("runtimeFamily", null)
+      });
+
+    case "install_dependencies":
+      if (typeof options.installDependencies !== "function") {
+        throw new Error("Environment manager is not available in this runtime.");
+      }
+
+      return options.installDependencies({
+        profileId: readArg("profileId", null),
+        projectRoot: readArg("projectRoot", projectRoot)
+      });
+
+    case "activate_environment":
+      if (typeof options.activateEnvironment !== "function") {
+        throw new Error("Environment manager is not available in this runtime.");
+      }
+
+      return options.activateEnvironment({
+        profileId: readArg("profileId", null)
+      });
+
+    case "describe_environment":
+      if (typeof options.describeEnvironment !== "function") {
+        throw new Error("Environment manager is not available in this runtime.");
+      }
+
+      return options.describeEnvironment({
+        profileId: readArg("profileId", null),
+        projectId: readArg("projectId", readArg("project_id", null))
+      });
+
+    case "list_tools":
+      if (typeof options.listTools !== "function") {
+        throw new Error("Tool registry is not available in this runtime.");
+      }
+
+      return options.listTools({
+        status: readArg("status", null),
+        source: readArg("source", null),
+        name: readArg("name", null)
+      });
+
+    case "describe_tool":
+      if (typeof options.describeTool !== "function") {
+        throw new Error("Tool registry is not available in this runtime.");
+      }
+
+      return options.describeTool(readArg("name", readArg("toolName", "")), readArg("version", ""));
+
+    case "list_tool_versions":
+      if (typeof options.listToolVersions !== "function") {
+        throw new Error("Tool registry is not available in this runtime.");
+      }
+
+      return options.listToolVersions(readArg("name", readArg("toolName", "")));
+
+    case "list_capability_gaps":
+      if (typeof options.listCapabilityGaps !== "function") {
+        throw new Error("Tool registry is not available in this runtime.");
+      }
+
+      return options.listCapabilityGaps({
+        projectId: readArg("projectId", readArg("project_id", null)),
+        status: readArg("status", null),
+        category: readArg("category", null)
+      });
+
+    case "emit_capability_gap":
+      if (typeof options.emitCapabilityGap !== "function") {
+        throw new Error("Capability gap logger is not available in this runtime.");
+      }
+
+      return options.emitCapabilityGap({
+        taskId: readArg("taskId", readArg("task_id", null)),
+        projectId: readArg("projectId", readArg("project_id", null)),
+        description: readArg("description", ""),
+        workaroundAttempted: readArg("workaroundAttempted", ""),
+        proposedToolName: readArg("proposedToolName", ""),
+        category: readArg("category", "general")
+      });
+
+    case "set_secret":
+      if (typeof options.setSecret !== "function") {
+        throw new Error("Secrets vault is not available in this runtime.");
+      }
+
+      return options.setSecret({
+        projectId: readArg("projectId", readArg("project_id", null)),
+        name: readArg("name", ""),
+        value: readArg("value", ""),
+        backend: readArg("backend", "vault_file")
+      });
+
+    case "list_secret_refs":
+      if (typeof options.listSecretRefs !== "function") {
+        throw new Error("Secrets vault is not available in this runtime.");
+      }
+
+      return options.listSecretRefs(readArg("projectId", readArg("project_id", null)));
+
+    case "delete_secret":
+      if (typeof options.deleteSecret !== "function") {
+        throw new Error("Secrets vault is not available in this runtime.");
+      }
+
+      return options.deleteSecret({
+        projectId: readArg("projectId", readArg("project_id", null)),
+        name: readArg("name", "")
+      });
+
+    case "inject_secret_ref":
+      if (typeof options.injectSecretRef !== "function") {
+        throw new Error("Secrets vault is not available in this runtime.");
+      }
+
+      return options.injectSecretRef({
+        projectId: readArg("projectId", readArg("project_id", null)),
+        name: readArg("name", ""),
+        envKey: readArg("envKey", readArg("env_key", ""))
+      });
+
+    case "run_verification":
+      if (typeof options.runVerification !== "function") {
+        throw new Error("Verification runner is not available in this runtime.");
+      }
+
+      return options.runVerification({
+        taskId: readArg("taskId", readArg("task_id", null)),
+        projectId: readArg("projectId", readArg("project_id", null)),
+        projectRoot: readArg("projectRoot", projectRoot),
+        commands: readArg("commands", null),
+        archetype: readArg("archetype", null),
+        timeoutMs: readArg("timeoutMs", 600000)
+      });
 
     case "delegate_task":
       if (typeof options.delegateTask !== "function") {
